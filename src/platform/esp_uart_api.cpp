@@ -6,21 +6,55 @@
 
 namespace
 {
-    bool g_is_initialized = false;
+    HardwareSerial g_motion_mcu_serial(board_config::motion_mcu_uart_id);
+    HardwareSerial g_dwm1001_serial(board_config::dwm1001_uart_id);
 
-    HardwareSerial *get_serial(esp_uart_api::uart_port port)
+    struct uart_context
     {
-        if (port == esp_uart_api::uart_port::motion_mcu)
+        std::uint8_t uart_id;
+        HardwareSerial *serial;
+        bool initialized;
+    };
+
+    uart_context g_motion_mcu_context =
+    {
+        board_config::motion_mcu_uart_id,
+        &g_motion_mcu_serial,
+        false
+    };
+
+    uart_context g_dwm1001_context =
+    {
+        board_config::dwm1001_uart_id,
+        &g_dwm1001_serial,
+        false
+    };
+
+    uart_context *find_context(std::uint8_t uart_id)
+    {
+        if (g_motion_mcu_context.uart_id == uart_id)
         {
-            return &Serial2;
+            return &g_motion_mcu_context;
         }
 
-        if (port == esp_uart_api::uart_port::dwm1001)
+        if (g_dwm1001_context.uart_id == uart_id)
         {
-            return &Serial1;
+            return &g_dwm1001_context;
         }
 
         return nullptr;
+    }
+
+    void begin_context(uart_context &context, std::uint32_t baud_rate, std::uint8_t rx_pin, std::uint8_t tx_pin)
+    {
+        context.serial->begin(
+            baud_rate,
+            SERIAL_8N1,
+            rx_pin,
+            tx_pin
+        );
+
+        context.initialized = true;
     }
 }
 
@@ -28,29 +62,36 @@ namespace esp_uart_api
 {
     void init()
     {
-        Serial2.begin(
+        begin_context(
+            g_motion_mcu_context,
             board_config::motion_mcu_uart_baud_rate,
-            SERIAL_8N1,
             board_config::motion_mcu_uart_rx_pin,
-            board_config::motion_mcu_uart_tx_pin);
+            board_config::motion_mcu_uart_tx_pin
+        );
 
-        Serial1.begin(
+        begin_context(
+            g_dwm1001_context,
             board_config::dwm1001_uart_baud_rate,
-            SERIAL_8N1,
             board_config::dwm1001_uart_rx_pin,
-            board_config::dwm1001_uart_tx_pin);
-
-        g_is_initialized = true;
+            board_config::dwm1001_uart_tx_pin
+        );
     }
 
-    uart_status write_bytes(uart_port port, const std::uint8_t *data, std::size_t length)
+    uart_status write_bytes(std::uint8_t uart_id, const std::uint8_t *data, std::size_t length)
     {
-        if (g_is_initialized == false)
+        uart_context *context = find_context(uart_id);
+
+        if (context == nullptr)
+        {
+            return uart_status::invalid_arg;
+        }
+
+        if (context->initialized == false)
         {
             return uart_status::not_initialized;
         }
 
-        if (data == nullptr)
+        if ((data == nullptr) && (length > 0U))
         {
             return uart_status::invalid_arg;
         }
@@ -60,16 +101,9 @@ namespace esp_uart_api
             return uart_status::ok;
         }
 
-        HardwareSerial *serial = get_serial(port);
+        std::size_t bytes_written = context->serial->write(data, length);
 
-        if (serial == nullptr)
-        {
-            return uart_status::invalid_arg;
-        }
-
-        std::size_t written = serial->write(data, length);
-
-        if (written != length)
+        if (bytes_written != length)
         {
             return uart_status::write_failed;
         }
@@ -77,9 +111,16 @@ namespace esp_uart_api
         return uart_status::ok;
     }
 
-    std::size_t read_bytes(uart_port port, std::uint8_t *data_out, std::size_t capacity)
+    std::size_t read_bytes(std::uint8_t uart_id, std::uint8_t *data_out, std::size_t capacity)
     {
-        if (g_is_initialized == false)
+        uart_context *context = find_context(uart_id);
+
+        if (context == nullptr)
+        {
+            return 0U;
+        }
+
+        if (context->initialized == false)
         {
             return 0U;
         }
@@ -94,33 +135,45 @@ namespace esp_uart_api
             return 0U;
         }
 
-        HardwareSerial *serial = get_serial(port);
+        std::size_t bytes_read = 0U;
 
-        if (serial == nullptr)
+        while ((context->serial->available() > 0) && (bytes_read < capacity))
+        {
+            int byte_value = context->serial->read();
+
+            if (byte_value < 0)
+            {
+                break;
+            }
+
+            data_out[bytes_read] = static_cast<std::uint8_t>(byte_value);
+            bytes_read++;
+        }
+
+        return bytes_read;
+    }
+
+    std::size_t available_bytes(std::uint8_t uart_id)
+    {
+        uart_context *context = find_context(uart_id);
+
+        if (context == nullptr)
         {
             return 0U;
         }
 
-        std::size_t count = 0U;
-
-        while (count < capacity)
+        if (context->initialized == false)
         {
-            if (serial->available() <= 0)
-            {
-                break;
-            }
-
-            int value = serial->read();
-
-            if (value < 0)
-            {
-                break;
-            }
-
-            data_out[count] = static_cast<std::uint8_t>(value);
-            count++;
+            return 0U;
         }
 
-        return count;
+        int available_count = context->serial->available();
+
+        if (available_count < 0)
+        {
+            return 0U;
+        }
+
+        return static_cast<std::size_t>(available_count);
     }
 }

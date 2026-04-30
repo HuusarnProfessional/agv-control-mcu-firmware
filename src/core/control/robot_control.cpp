@@ -1,6 +1,7 @@
 #include "robot_control.hpp"
 
-#include "../../motion_mcu_communication/motion_mcu_communication_pipeline.hpp"
+#include "../../motion_mcu_communication/incoming_payloads/incoming_motion_mcu_pipeline.hpp"
+#include "../../motion_mcu_communication/outgoing_payloads/outgoing_motion_mcu_pipeline.hpp"
 #include "../../global_positioning/global_positioning_pipeline.hpp"
 #include "../../position_sensorfusion/position_sensorfusion_pipeline.hpp"
 #include "../../mission/mission_pipeline.hpp"
@@ -11,7 +12,8 @@ namespace robot_control
 {
     void init()
     {
-        motion_mcu_communication_pipeline::init();
+        incoming_motion_mcu_pipeline::init();
+        outgoing_motion_mcu_pipeline::init();
         global_positioning_pipeline::init();
         position_sensorfusion_pipeline::init();
         mission_pipeline::init();
@@ -21,7 +23,8 @@ namespace robot_control
 
     void tick(std::uint32_t now_ms)
     {
-        motion_mcu_communication_pipeline::tick(now_ms);
+        incoming_motion_mcu_pipeline::tick(now_ms);
+        outgoing_motion_mcu_pipeline::tick(now_ms);
         global_positioning_pipeline::tick(now_ms);
         position_sensorfusion_pipeline::tick(now_ms);
         mission_pipeline::tick(now_ms);

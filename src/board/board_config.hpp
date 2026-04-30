@@ -19,4 +19,7 @@ namespace board_config
 
     constexpr std::uint8_t oled_sda_pin = 21U;
     constexpr std::uint8_t oled_scl_pin = 22U;
+
+    constexpr std::uint8_t motion_mcu_uart_id = 2;
+    constexpr std::uint8_t dwm1001_uart_id = 1;
 }
