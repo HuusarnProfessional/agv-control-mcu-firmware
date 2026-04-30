@@ -8,8 +8,8 @@
 #include "debug/imu_debug_payload.hpp"
 #include "debug/obstacle_debug_payload.hpp"
 #include "debug/voltage_debug_payload.hpp"
-#include "../../board/board_config.hpp"
-#include "../../platform/esp_uart_api.hpp"
+#include "../../../board/board_config.hpp"
+#include "../../../platform/esp_uart_api.hpp"
 #include "../motion_mcu_routes.hpp"
 
 namespace
