@@ -27,6 +27,7 @@ namespace motion_mcu_routes
         trailer_status = 0x25U,
         unlock_safe_guard = 0x26U,
         lock_safe_guard = 0x27U,
-        obstacle_safety_control = 0x28U
+        obstacle_safety_control = 0x28U,
+        position_correction = 0x30U
     };
 }
