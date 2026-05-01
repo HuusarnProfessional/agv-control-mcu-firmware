@@ -4,6 +4,7 @@
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <cstdlib>
 
 #include "../../bluetooth_transport.hpp"
@@ -16,6 +17,20 @@ namespace handler_helpers
         return bluetooth_transport::write_bytes(
                    reinterpret_cast<const std::uint8_t *>(response),
                    N - 1u) == bluetooth_transport::transport_status::ok;
+    }
+
+    inline bool write_response_text(const char *response)
+    {
+        if (response == nullptr)
+        {
+            return false;
+        }
+
+        const std::size_t response_length = std::strlen(response);
+
+        return bluetooth_transport::write_bytes(
+                   reinterpret_cast<const std::uint8_t *>(response),
+                   response_length) == bluetooth_transport::transport_status::ok;
     }
 
     inline bool parse_int16(const char *text, std::int16_t &value_out)

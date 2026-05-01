@@ -1,12 +1,29 @@
 #include "bluetooth_communication_pipeline.hpp"
 
+#include <cstring>
+
 #include "bluetooth_transport.hpp"
 #include "middleware/middleware_parser.hpp"
+#include "../mission/mission_transfer.hpp"
 
 namespace
 {
     middleware_types::selected_route g_selected_route = {};
     bool g_has_selected_route = false;
+
+    bool write_outgoing_request(const char *request_text)
+    {
+        if (request_text == nullptr)
+        {
+            return false;
+        }
+
+        const std::size_t request_length = std::strlen(request_text);
+
+        return bluetooth_transport::write_bytes(
+                   reinterpret_cast<const std::uint8_t *>(request_text),
+                   request_length) == bluetooth_transport::transport_status::ok;
+    }
 }
 
 namespace bluetooth_communication_pipeline
@@ -64,6 +81,22 @@ namespace bluetooth_communication_pipeline
             middleware_parser::reset();
             middleware_types::clear_selected_route(g_selected_route);
             g_has_selected_route = false;
+        }
+
+        if (mission_transfer::has_pending_request() == true)
+        {
+            char request_text[mission_transfer::max_request_text_length] = {};
+            const bool request_ready = mission_transfer::pop_pending_request(request_text, sizeof(request_text));
+
+            if (request_ready == true)
+            {
+                const bool request_written = write_outgoing_request(request_text);
+
+                if (request_written == false)
+                {
+                    mission_transfer::handle_response_fail(2u);
+                }
+            }
         }
     }
 }

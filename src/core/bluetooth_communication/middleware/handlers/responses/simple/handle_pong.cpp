@@ -6,6 +6,14 @@ namespace response_handlers
 {
     bool handle_pong()
     {
-        return middleware_parse_helpers::read_end(50000u);
+        constexpr std::uint32_t timeout_us = 50000u;
+        const bool parsed_ok = middleware_parse_helpers::read_end(timeout_us);
+
+        if (parsed_ok == false)
+        {
+            return false;
+        }
+
+        return true;
     }
 }

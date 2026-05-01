@@ -47,8 +47,6 @@ namespace
         {"ok()", response_handlers::handle_ok},
         {"fail(uint8_t:error_code)", response_handlers::handle_fail},
         {"speed(int16_t:speed_mm_per_s)", response_handlers::handle_speed},
-        {"position_local(int16_t:x,int16_t:y,int8_t:confidence)", response_handlers::handle_position_local},
-        {"position_global(int16_t:x,int16_t:y,int8_t:confidence)", response_handlers::handle_position_global},
         {"mission_part_current(uint16_t:part_number)", response_handlers::handle_mission_part_current},
         {"armed(bool:is_armed)", response_handlers::handle_armed}
     };
