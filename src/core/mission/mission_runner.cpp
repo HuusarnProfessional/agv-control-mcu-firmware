@@ -1,5 +1,8 @@
 #include "mission_runner.hpp"
 
+#include <Arduino.h>
+
+#include "mission_buffer.hpp"
 #include "mission_transfer.hpp"
 
 namespace
@@ -70,6 +73,34 @@ namespace mission_runner
         }
 
         part_number_out = g_current_part;
+        return true;
+    }
+
+    bool complete_current_part()
+    {
+        if (g_is_running == false)
+        {
+            return false;
+        }
+
+        const std::uint16_t part_count = mission_buffer::part_count();
+
+        if (part_count == 0u)
+        {
+            g_is_running = false;
+            g_current_part = 0u;
+           
+            return true;
+        }
+
+        if ((g_current_part + 1u) < part_count)
+        {
+            ++g_current_part;
+            return true;
+        }
+
+        g_is_running = false;
+        
         return true;
     }
 }

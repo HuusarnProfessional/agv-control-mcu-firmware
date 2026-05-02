@@ -5,8 +5,8 @@ namespace
     struct mission_part_record
     {
         bool is_set;
-        char start_command[mission_buffer::max_command_length];
-        char end_command[mission_buffer::max_command_length];
+        mission_buffer::mission_command_view start_command;
+        mission_buffer::mission_command_view end_command;
         std::uint16_t path_chunk_count;
     };
 
@@ -87,13 +87,32 @@ namespace
         return true;
     }
 
+    void clear_command_view(mission_buffer::mission_command_view &command_view)
+    {
+        command_view.route = nullptr;
+        clear_text_buffer(command_view.argument_stream, sizeof(command_view.argument_stream));
+    }
+
+    bool copy_command_view(
+        mission_buffer::mission_command_view &destination,
+        const mission_buffer::mission_command_view &source)
+    {
+        if (source.route == nullptr)
+        {
+            return false;
+        }
+
+        destination.route = source.route;
+        return copy_text(destination.argument_stream, sizeof(destination.argument_stream), source.argument_stream);
+    }
+
     void clear_parts()
     {
         for (std::size_t index = 0u; index < mission_buffer::max_part_count; ++index)
         {
             g_parts[index].is_set = false;
-            clear_text_buffer(g_parts[index].start_command, sizeof(g_parts[index].start_command));
-            clear_text_buffer(g_parts[index].end_command, sizeof(g_parts[index].end_command));
+            clear_command_view(g_parts[index].start_command);
+            clear_command_view(g_parts[index].end_command);
             g_parts[index].path_chunk_count = 0u;
         }
     }
@@ -223,11 +242,11 @@ namespace mission_buffer
     buffer_status set_part_info(
         const char *mission_id,
         std::uint16_t part_number,
-        const char *start_command,
-        const char *end_command,
+        const mission_command_view &start_command,
+        const mission_command_view &end_command,
         std::uint16_t path_chunk_count)
     {
-        if ((start_command == nullptr) || (end_command == nullptr) || (path_chunk_count > max_chunk_count))
+        if ((start_command.route == nullptr) || (end_command.route == nullptr) || (path_chunk_count > max_chunk_count))
         {
             return buffer_status::invalid_arg;
         }
@@ -249,12 +268,12 @@ namespace mission_buffer
             return buffer_status::duplicate;
         }
 
-        if (copy_text(part_record.start_command, sizeof(part_record.start_command), start_command) == false)
+        if (copy_command_view(part_record.start_command, start_command) == false)
         {
             return buffer_status::invalid_arg;
         }
 
-        if (copy_text(part_record.end_command, sizeof(part_record.end_command), end_command) == false)
+        if (copy_command_view(part_record.end_command, end_command) == false)
         {
             return buffer_status::invalid_arg;
         }
@@ -352,12 +371,12 @@ namespace mission_buffer
             return false;
         }
 
-        if (copy_text(view_out.start_command, sizeof(view_out.start_command), part_record.start_command) == false)
+        if (copy_command_view(view_out.start_command, part_record.start_command) == false)
         {
             return false;
         }
 
-        if (copy_text(view_out.end_command, sizeof(view_out.end_command), part_record.end_command) == false)
+        if (copy_command_view(view_out.end_command, part_record.end_command) == false)
         {
             return false;
         }

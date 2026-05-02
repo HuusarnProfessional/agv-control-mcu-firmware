@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "../bluetooth_communication/middleware/route/middleware_route_types.hpp"
+
 namespace mission_buffer
 {
     constexpr std::size_t max_mission_id_length = 64u;
@@ -23,10 +25,16 @@ namespace mission_buffer
         incomplete
     };
 
+    struct mission_command_view
+    {
+        const middleware_route_types::middleware_command_route *route;
+        char argument_stream[max_command_length];
+    };
+
     struct mission_part_view
     {
-        char start_command[max_command_length];
-        char end_command[max_command_length];
+        mission_command_view start_command;
+        mission_command_view end_command;
         std::uint16_t path_chunk_count;
     };
 
@@ -54,8 +62,8 @@ namespace mission_buffer
     buffer_status set_part_info(
         const char *mission_id,
         std::uint16_t part_number,
-        const char *start_command,
-        const char *end_command,
+        const mission_command_view &start_command,
+        const mission_command_view &end_command,
         std::uint16_t path_chunk_count);
 
     buffer_status store_path_chunk(

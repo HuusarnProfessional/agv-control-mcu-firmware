@@ -25,8 +25,8 @@ namespace
         {"path_chunk(const char:mission_id,uint16_t:part_number,uint16_t:chunk_number,uint16_t:point_count,const uint8_t:path_data[point_count * 4])", incoming_request_handlers::handle_path_chunk},
         {"set_mission_start(const char:mission_id)", incoming_request_handlers::handle_set_mission_start},
         {"set_mission_abort()", incoming_request_handlers::handle_set_mission_abort},
-        {"set_pause_ms()", incoming_request_handlers::handle_set_pause_ms},
-        {"set_speed(int16_t:speed_mm_per_s)", incoming_request_handlers::handle_set_speed},
+        {"set_pause_ms(uint32_t duration_ms)", incoming_request_handlers::handle_set_pause_ms},
+        {"set_speed(uint16_t:speed_mm_per_s)", incoming_request_handlers::handle_set_speed},
         {"get_mission_part_current()", incoming_request_handlers::handle_get_mission_part_current},
         {"set_drive_rotate_deg(int16_t:delta_heading)", incoming_request_handlers::handle_set_drive_rotate_deg},
         {"set_watch_keep_alive(uint16_t:timeout_ms)", incoming_request_handlers::handle_set_watch_keep_alive},
@@ -74,6 +74,28 @@ namespace
         g_response_routes,
         sizeof(g_response_routes) / sizeof(g_response_routes[0])
     };
+
+    bool command_pattern_matches(const char *command_pattern, const char *command_name)
+    {
+        if ((command_pattern == nullptr) || (command_name == nullptr))
+        {
+            return false;
+        }
+
+        std::size_t index = 0u;
+
+        while ((command_pattern[index] != '\0') && (command_pattern[index] != '(') && (command_name[index] != '\0'))
+        {
+            if (command_pattern[index] != command_name[index])
+            {
+                return false;
+            }
+
+            ++index;
+        }
+
+        return ((command_pattern[index] == '(') || (command_pattern[index] == '\0')) && (command_name[index] == '\0');
+    }
 }
 
 namespace middleware_route_table
@@ -111,5 +133,20 @@ namespace middleware_route_table
     const middleware_route_types::middleware_route_table &response_routes()
     {
         return g_response_route_table;
+    }
+
+    const middleware_route_types::middleware_command_route *find_incoming_request_route(const char *command_name)
+    {
+        for (std::size_t index = 0u; index < g_incoming_request_route_table.route_count; ++index)
+        {
+            const middleware_route_types::middleware_command_route &route = g_incoming_request_route_table.routes[index];
+
+            if (command_pattern_matches(route.command_pattern, command_name) == true)
+            {
+                return &route;
+            }
+        }
+
+        return nullptr;
     }
 }

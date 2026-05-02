@@ -2,12 +2,17 @@
 
 #include <Arduino.h>
 
-#include "../board/board_config.hpp"
-
 namespace
 {
-    HardwareSerial g_motion_mcu_serial(board_config::motion_mcu_uart_id);
-    HardwareSerial g_dwm1001_serial(board_config::dwm1001_uart_id);
+    constexpr std::uint32_t motion_mcu_uart_baud_rate = 115200u;
+    constexpr std::uint8_t motion_mcu_uart_rx_pin = 16u;
+    constexpr std::uint8_t motion_mcu_uart_tx_pin = 17u;
+    constexpr std::uint32_t dwm1001_uart_baud_rate = 115200u;
+    constexpr std::uint8_t dwm1001_uart_rx_pin = 26u;
+    constexpr std::uint8_t dwm1001_uart_tx_pin = 25u;
+
+    HardwareSerial g_motion_mcu_serial(esp_uart_api::motion_mcu_uart_id);
+    HardwareSerial g_dwm1001_serial(esp_uart_api::dwm1001_uart_id);
 
     struct uart_context
     {
@@ -18,14 +23,14 @@ namespace
 
     uart_context g_motion_mcu_context =
     {
-        board_config::motion_mcu_uart_id,
+        esp_uart_api::motion_mcu_uart_id,
         &g_motion_mcu_serial,
         false
     };
 
     uart_context g_dwm1001_context =
     {
-        board_config::dwm1001_uart_id,
+        esp_uart_api::dwm1001_uart_id,
         &g_dwm1001_serial,
         false
     };
@@ -64,16 +69,16 @@ namespace esp_uart_api
     {
         begin_context(
             g_motion_mcu_context,
-            board_config::motion_mcu_uart_baud_rate,
-            board_config::motion_mcu_uart_rx_pin,
-            board_config::motion_mcu_uart_tx_pin
+            motion_mcu_uart_baud_rate,
+            motion_mcu_uart_rx_pin,
+            motion_mcu_uart_tx_pin
         );
 
         begin_context(
             g_dwm1001_context,
-            board_config::dwm1001_uart_baud_rate,
-            board_config::dwm1001_uart_rx_pin,
-            board_config::dwm1001_uart_tx_pin
+            dwm1001_uart_baud_rate,
+            dwm1001_uart_rx_pin,
+            dwm1001_uart_tx_pin
         );
     }
 
@@ -91,12 +96,12 @@ namespace esp_uart_api
             return uart_status::not_initialized;
         }
 
-        if ((data == nullptr) && (length > 0U))
+        if ((data == nullptr) && (length > 0u))
         {
             return uart_status::invalid_arg;
         }
 
-        if (length == 0U)
+        if (length == 0u)
         {
             return uart_status::ok;
         }
@@ -117,25 +122,25 @@ namespace esp_uart_api
 
         if (context == nullptr)
         {
-            return 0U;
+            return 0u;
         }
 
         if (context->initialized == false)
         {
-            return 0U;
+            return 0u;
         }
 
         if (data_out == nullptr)
         {
-            return 0U;
+            return 0u;
         }
 
-        if (capacity == 0U)
+        if (capacity == 0u)
         {
-            return 0U;
+            return 0u;
         }
 
-        std::size_t bytes_read = 0U;
+        std::size_t bytes_read = 0u;
 
         while ((context->serial->available() > 0) && (bytes_read < capacity))
         {
@@ -159,19 +164,19 @@ namespace esp_uart_api
 
         if (context == nullptr)
         {
-            return 0U;
+            return 0u;
         }
 
         if (context->initialized == false)
         {
-            return 0U;
+            return 0u;
         }
 
         int available_count = context->serial->available();
 
         if (available_count < 0)
         {
-            return 0U;
+            return 0u;
         }
 
         return static_cast<std::size_t>(available_count);

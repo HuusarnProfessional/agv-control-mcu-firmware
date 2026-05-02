@@ -11,12 +11,28 @@
 
 namespace handler_helpers
 {
+    inline bool write_response_bytes(const std::uint8_t *data, std::size_t length)
+    {
+        return bluetooth_transport::write_bytes(data, length) == bluetooth_transport::transport_status::ok;
+    }
+
     template <std::size_t N>
     bool write_response(const char (&response)[N])
     {
-        return bluetooth_transport::write_bytes(
-                   reinterpret_cast<const std::uint8_t *>(response),
-                   N - 1u) == bluetooth_transport::transport_status::ok;
+        static constexpr char line_ending[] = "\n";
+
+        const bool response_written = write_response_bytes(
+            reinterpret_cast<const std::uint8_t *>(response),
+            N - 1u);
+
+        if (response_written == false)
+        {
+            return false;
+        }
+
+        return write_response_bytes(
+            reinterpret_cast<const std::uint8_t *>(line_ending),
+            sizeof(line_ending) - 1u);
     }
 
     inline bool write_response_text(const char *response)
@@ -28,9 +44,20 @@ namespace handler_helpers
 
         const std::size_t response_length = std::strlen(response);
 
-        return bluetooth_transport::write_bytes(
-                   reinterpret_cast<const std::uint8_t *>(response),
-                   response_length) == bluetooth_transport::transport_status::ok;
+        static constexpr char line_ending[] = "\n";
+
+        const bool response_written = write_response_bytes(
+            reinterpret_cast<const std::uint8_t *>(response),
+            response_length);
+
+        if (response_written == false)
+        {
+            return false;
+        }
+
+        return write_response_bytes(
+            reinterpret_cast<const std::uint8_t *>(line_ending),
+            sizeof(line_ending) - 1u);
     }
 
     inline bool parse_int16(const char *text, std::int16_t &value_out)

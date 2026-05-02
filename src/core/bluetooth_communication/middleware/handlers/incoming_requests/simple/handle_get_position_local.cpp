@@ -3,7 +3,7 @@
 #include <cstdio>
 
 #include "../../../middleware_parse_helpers.hpp"
-#include "../../../../motion_mcu_communication/motion_mcu_runtime.hpp"
+#include "../../../../../motion_mcu_communication/motion_mcu_runtime.hpp"
 #include "../../handler_helpers.hpp"
 
 namespace

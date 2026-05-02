@@ -20,6 +20,12 @@ namespace
     std::size_t g_total_bytes = 0;
     parse_phase g_phase = parse_phase::read_category;
 
+    bool is_ignored_padding(std::uint8_t byte_value)
+    {
+        return (byte_value == static_cast<std::uint8_t>('\r')) ||
+               (byte_value == static_cast<std::uint8_t>('\n'));
+    }
+
     bool strings_equal(const char *left, const char *right)
     {
         if ((left == nullptr) || (right == nullptr))
@@ -124,6 +130,11 @@ namespace middleware_parser
 
     middleware_types::parser_status consume_byte(std::uint8_t byte_value)
     {
+        if (is_ignored_padding(byte_value) == true)
+        {
+            return g_status;
+        }
+
         if (g_status == middleware_types::parser_status::route_ready)
         {
             return g_status;

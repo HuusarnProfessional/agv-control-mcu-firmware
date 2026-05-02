@@ -5,6 +5,9 @@
 
 namespace esp_uart_api
 {
+    constexpr std::uint8_t motion_mcu_uart_id = 2u;
+    constexpr std::uint8_t dwm1001_uart_id = 1u;
+
     enum class uart_status : std::uint8_t
     {
         ok = 0,

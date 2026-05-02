@@ -23,5 +23,7 @@ namespace middleware_parse_helpers
 
     bool read_until_comma_or_end(char *buffer_out, std::size_t capacity, bool &ended_out, std::uint32_t timeout_us);
 
+    bool read_command_until_comma_or_end(char *buffer_out, std::size_t capacity, bool &ended_out, std::uint32_t timeout_us);
+
     bool read_binary(std::uint8_t *buffer_out, std::size_t length, std::uint32_t timeout_us);
 }

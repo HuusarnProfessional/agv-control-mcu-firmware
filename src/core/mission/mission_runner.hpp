@@ -23,4 +23,6 @@ namespace mission_runner
     bool is_running();
 
     bool get_current_part(std::uint16_t &part_number_out);
+
+    bool complete_current_part();
 }

@@ -6,7 +6,7 @@
 #include <climits>
 #include <cstdlib>
 
-#include "../bluetooth_transport.hpp"
+#include "middleware_handler_input_bridge.hpp"
 
 namespace
 {
@@ -16,7 +16,7 @@ namespace
 
         while ((micros() - start_time_us) < timeout_us)
         {
-            if (bluetooth_transport::read_byte(byte_out) == true)
+            if (middleware_handler_input_bridge::read_byte(byte_out) == true)
             {
                 return true;
             }
@@ -303,6 +303,54 @@ namespace middleware_parse_helpers
             }
 
             if (byte_value == static_cast<std::uint8_t>(','))
+            {
+                buffer_out[length] = '\0';
+                return true;
+            }
+
+            if (length + 1 >= capacity)
+            {
+                return false;
+            }
+
+            buffer_out[length] = static_cast<char>(byte_value);
+            ++length;
+        }
+
+        return false;
+    }
+
+    bool read_command_until_comma_or_end(char *buffer_out, std::size_t capacity, bool &ended_out, std::uint32_t timeout_us)
+    {
+        if ((buffer_out == nullptr) || (capacity == 0))
+        {
+            return false;
+        }
+
+        ended_out = false;
+
+        std::size_t length = 0;
+        std::uint8_t byte_value = 0;
+        std::int32_t nested_parenthesis_depth = 0;
+
+        while (read_next_byte(byte_value, timeout_us) == true)
+        {
+            if (byte_value == static_cast<std::uint8_t>('('))
+            {
+                ++nested_parenthesis_depth;
+            }
+            else if (byte_value == static_cast<std::uint8_t>(')'))
+            {
+                if (nested_parenthesis_depth == 0)
+                {
+                    buffer_out[length] = '\0';
+                    ended_out = true;
+                    return true;
+                }
+
+                --nested_parenthesis_depth;
+            }
+            else if ((byte_value == static_cast<std::uint8_t>(',')) && (nested_parenthesis_depth == 0))
             {
                 buffer_out[length] = '\0';
                 return true;

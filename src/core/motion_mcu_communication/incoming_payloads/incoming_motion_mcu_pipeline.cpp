@@ -8,7 +8,6 @@
 #include "debug/imu_debug_payload.hpp"
 #include "debug/obstacle_debug_payload.hpp"
 #include "debug/voltage_debug_payload.hpp"
-#include "../../../board/board_config.hpp"
 #include "../../../platform/esp_uart_api.hpp"
 #include "../motion_mcu_routes.hpp"
 
@@ -131,13 +130,13 @@ namespace incoming_motion_mcu_pipeline
     {
         (void)now_ms;
 
-        std::uint8_t read_buffer[32U] = {};
+        std::uint8_t read_buffer[32u] = {};
         std::size_t read_count = esp_uart_api::read_bytes(
-            board_config::motion_mcu_uart_id,
+            esp_uart_api::motion_mcu_uart_id,
             read_buffer,
             sizeof(read_buffer));
 
-        for (std::size_t index = 0U; index < read_count; index++)
+        for (std::size_t index = 0u; index < read_count; index++)
         {
             process_byte(read_buffer[index]);
         }

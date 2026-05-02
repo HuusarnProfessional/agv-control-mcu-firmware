@@ -28,8 +28,8 @@ namespace mission_transfer
     transfer_status set_part_info(
         const char *mission_id,
         std::uint16_t part_number,
-        const char *start_command,
-        const char *end_command,
+        const mission_buffer::mission_command_view &start_command,
+        const mission_buffer::mission_command_view &end_command,
         std::uint16_t path_chunk_count);
 
     transfer_status append_path_chunk(
