@@ -9,13 +9,24 @@ namespace local_position_payload
     {
         motion_mcu_runtime::local_position_state state = {};
 
-        bool has_x = payload_helper_functions::read_i16_le(payload_data, payload_length, 0U, state.x_mm);
-        bool has_y = payload_helper_functions::read_i16_le(payload_data, payload_length, 2U, state.y_mm);
-        bool has_heading = payload_helper_functions::read_i16_le(payload_data, payload_length, 4U, state.heading_mrad);
+        const bool has_pose = payload_helper_functions::read_bool(payload_data, payload_length, 0U, state.has_pose);
+        const bool has_x = payload_helper_functions::read_i64_le(payload_data, payload_length, 1U, state.x_um);
+        const bool has_y = payload_helper_functions::read_i64_le(payload_data, payload_length, 9U, state.y_um);
+        const bool has_heading = payload_helper_functions::read_i32_le(payload_data, payload_length, 17U, state.heading_urad);
+        const bool has_confidence_position = payload_helper_functions::read_u16_le(payload_data, payload_length, 21U, state.confidence_position);
+        const bool has_confidence_heading = payload_helper_functions::read_u16_le(payload_data, payload_length, 23U, state.confidence_heading);
+        const bool has_pose_id = payload_helper_functions::read_u8(payload_data, payload_length, 25U, state.pose_id);
+        const bool has_branch_id = payload_helper_functions::read_u8(payload_data, payload_length, 26U, state.branch_id);
 
-        if ((has_x == true) && (has_y == true) && (has_heading == true))
+        if ((has_pose == true) &&
+            (has_x == true) &&
+            (has_y == true) &&
+            (has_heading == true) &&
+            (has_confidence_position == true) &&
+            (has_confidence_heading == true) &&
+            (has_pose_id == true) &&
+            (has_branch_id == true))
         {
-            state.is_valid = true;
             motion_mcu_runtime::set_local_position(state);
         }
     }

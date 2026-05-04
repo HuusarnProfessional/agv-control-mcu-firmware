@@ -3,14 +3,13 @@
 #include <cstdio>
 
 #include "../../../middleware_parse_helpers.hpp"
-#include "../../../../../motion_mcu_communication/motion_mcu_runtime.hpp"
+#include "../../../../../position_sensorfusion/position_sensorfusion.hpp"
 #include "../../handler_helpers.hpp"
 
 namespace
 {
     constexpr std::uint32_t timeout_us = 50000u;
-    constexpr std::int8_t valid_confidence = 100;
-    constexpr std::int8_t invalid_confidence = 0;
+    constexpr std::uint16_t stm_confidence_max = 1000U;
     constexpr std::size_t response_capacity = 64u;
 }
 
@@ -25,15 +24,30 @@ namespace incoming_request_handlers
             return false;
         }
 
-        const motion_mcu_runtime::local_position_state local_position = motion_mcu_runtime::get_local_position();
-        const std::int8_t confidence = local_position.is_valid ? valid_confidence : invalid_confidence;
+        const position_sensorfusion::output_snapshot local_position = position_sensorfusion::read_output();
+        const std::int32_t x_mm = static_cast<std::int32_t>(local_position.x_um / 1000LL);
+        const std::int32_t y_mm = static_cast<std::int32_t>(local_position.y_um / 1000LL);
+        std::int32_t confidence = 0;
+
+        if (local_position.has_pose == true)
+        {
+            std::uint16_t confidence_clamped = local_position.confidence_position;
+
+            if (confidence_clamped > stm_confidence_max)
+            {
+                confidence_clamped = stm_confidence_max;
+            }
+
+            confidence = static_cast<std::int32_t>((static_cast<std::uint32_t>(confidence_clamped) * 100U) / stm_confidence_max);
+        }
+
         char response[response_capacity] = {};
         const int formatted_length = std::snprintf(
             response,
             sizeof(response),
             "rsp:position_local(%d,%d,%d)",
-            static_cast<int>(local_position.x_mm),
-            static_cast<int>(local_position.y_mm),
+            static_cast<int>(x_mm),
+            static_cast<int>(y_mm),
             static_cast<int>(confidence));
 
         if ((formatted_length <= 0) || (static_cast<std::size_t>(formatted_length) >= sizeof(response)))

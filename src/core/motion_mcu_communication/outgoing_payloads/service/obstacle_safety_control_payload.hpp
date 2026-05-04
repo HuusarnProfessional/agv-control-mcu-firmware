@@ -4,5 +4,5 @@
 
 namespace obstacle_safety_control_payload
 {
-    bool send();
+    bool send(bool enabled);
 }

@@ -4,5 +4,5 @@
 
 namespace trailer_status_payload
 {
-    bool send();
+    bool send(bool has_trailer);
 }

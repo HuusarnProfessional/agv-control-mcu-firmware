@@ -1,0 +1,15 @@
+#include "heartbeat_payload.hpp"
+
+#include "../../motion_mcu_routes.hpp"
+#include "../outgoing_payload_definition.hpp"
+
+namespace heartbeat_payload
+{
+    bool send()
+    {
+        outgoing_payload_definition::payload_buffer payload = {};
+        payload.payload_id = static_cast<std::uint8_t>(motion_mcu_routes::outgoing_payload_id::heartbeat);
+        payload.payload_length = 0U;
+        return outgoing_payload_definition::send_payload(payload);
+    }
+}

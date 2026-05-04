@@ -157,6 +157,37 @@ namespace middleware_parse_helpers
         return true;
     }
 
+    bool read_uint32_and_end(std::uint32_t &value_out, std::uint32_t timeout_us)
+    {
+        char token_buffer[16] = {};
+        bool ended = false;
+
+        if (read_until_comma_or_end(token_buffer, sizeof(token_buffer), ended, timeout_us) == false)
+        {
+            return false;
+        }
+
+        if (ended == false)
+        {
+            return false;
+        }
+
+        unsigned long parsed_value = 0;
+
+        if (parse_unsigned_long(token_buffer, parsed_value) == false)
+        {
+            return false;
+        }
+
+        if (parsed_value > ULONG_MAX)
+        {
+            return false;
+        }
+
+        value_out = static_cast<std::uint32_t>(parsed_value);
+        return true;
+    }
+
     bool read_int8_and_end(std::int8_t &value_out, std::uint32_t timeout_us)
     {
         char token_buffer[8] = {};

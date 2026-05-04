@@ -1,97 +1,81 @@
 # deferred issues
 
-This file tracks work that is intentionally left for later in `src/core/bluetooth_communication/`.
+This file lists only the work that is still missing on the ESP side.
 
-Use this file as a checklist while the Bluetooth middleware is being completed.
+Completed work is intentionally omitted.
 
-## done baseline
+## bluetooth handlers that are still parser stubs
 
-- [x] raw Bluetooth transport API exists
-- [x] middleware parser selects route by category and command name
-- [x] route tables exist for `inc`, `ini`, and `rsp`
-- [x] pipeline connects transport, parser, route table, and handlers
-- [x] handlers now own parsing of the remaining message after `(`
-- [x] fake responses such as hardcoded `rsp:speed(0)` were removed from unfinished handlers
-- [x] middleware handler style was cleaned up to use explicit parse steps
+These handlers parse their arguments today, but still end in `return false;` and do not perform real work.
 
-## finished simple payload-only handlers
+- [ ] `incoming_request_handlers::handle_reset()`
+- [ ] `incoming_request_handlers::handle_get_position_global()`
+- [ ] `incoming_request_handlers::handle_get_armed()`
 
-- [x] `handle_ping()` parses `ping()` and writes `rsp:pong()`
-- [x] `handle_dummy()` parses `dummy()` and writes `rsp:ok()`
-- [x] `handle_pong()` validates `rsp:pong()`
-- [x] `handle_ok()` validates `rsp:ok()`
-- [x] `handle_fail()` validates `rsp:fail(uint8_t:error_code)`
+## mission execution is still structurally incomplete
 
-## high priority
+- [ ] decide how `set_drive_rotate_deg(...)` should interact with path-following between mission parts
+- [ ] decide whether the current Java mission segmentation is acceptable for path-following
 
-- [ ] define exact handler return contract
-- [ ] decide what `true` and `false` mean at pipeline level
-- [ ] decide when handlers should send `rsp:ok()` and `rsp:fail(...)`
-- [ ] decide whether pipeline should react differently when a handler returns `false`
+## control pipelines that are still empty
 
-## handler backend wiring
+- [ ] implement `src/core/global_positioning/global_positioning_pipeline.cpp`
 
-- [ ] connect `handle_set_drive_forward_mm()` to real drive/control logic
-- [ ] connect `handle_set_drive_rotate_deg()` to real drive/control logic
-- [ ] connect `handle_set_speed()` to real speed/control logic
-- [ ] connect `handle_set_pause_ms()` to real mission/control logic
-- [ ] connect `handle_set_armed()` to real armed-state logic
-- [ ] connect `handle_reset()` to real reset logic
+## bluetooth state and control backends still missing
 
-## state-backed response handlers
+- [ ] define real armed-state ownership on ESP
+- [ ] define real speed-state ownership on ESP
+- [ ] define real global-position ownership on ESP
+- [ ] implement real reset behavior for `reset()`
 
-- [ ] connect `handle_get_speed()` to real speed state
-- [x] connect `handle_get_position_local()` to real local position state with temporary confidence mapping from `is_valid`
-- [ ] revisit `handle_get_position_local()` when a real confidence source exists
-- [ ] connect `handle_get_position_global()` to real global position state
-- [ ] connect `handle_get_armed()` to real armed state
-- [x] connect `handle_get_mission_part_current()` to minimal mission runner state
+## motion mcu integration still missing at the upper layer
 
-## mission handlers
+The STM payload senders now exist, but the Bluetooth/control layer is still not using them.
 
-- [x] define mission storage/ownership boundary for Bluetooth mission transfer
-- [x] connect `handle_set_mission_new()` to mission transfer logic
-- [x] connect `handle_mission_part_info()` to mission transfer logic
-- [x] connect `handle_path_chunk()` to mission transfer logic
-- [x] connect `handle_set_mission_start()` to minimal mission runner logic
-- [x] connect `handle_set_mission_abort()` to minimal mission runner logic
-- [x] connect AGV-side mission pull flow so `set_mission_new()` triggers `ini:get_mission_part(...)` and later `ini:get_path_chunk(...)`
-- [ ] decide whether initiated request handler files should stay as parser stubs or be replaced by explicit sender-side modules
+- [ ] decide how armed-state should affect outgoing STM motion commands
+- [ ] decide whether `pause_payload` should remain unused on ESP because pause now lives locally
+- [ ] decide whether `trailer_status`, `obstacle_safety_control`, and similar STM service payloads are needed now or can stay deferred
+- [ ] revisit the temporary rotation-speed mapping used by `set_drive_rotate_deg(...)` if `set_speed(...)` later gets stricter semantics
 
-## watch handlers
+## stm heartbeat follow-up
 
-- [ ] implement `watch_manager.cpp`
+- [ ] decide what control behavior should happen when `motion_mcu_heartbeat` reports timeout
+- [ ] decide whether Bluetooth-visible commands should fail differently when the STM link is timed out
+
+## protocol alignment still open
+
+- [ ] lock the official mission command vocabulary with the Java/KTS side
+- [ ] decide whether unused `rsp:*` routes should remain in the route table or be removed until they have a real consumer
+
+## initiated request handlers that are still parser stubs
+
+These files are not used in the current mission transfer flow. AGV-side mission pull currently goes through `mission_transfer` and direct outgoing `ini:*` text requests from the pipeline.
+
+If these files stay, they still only parse incoming initiated requests and then fail.
+
+- [ ] `initiated_request_handlers::handle_get_mission_part()`
+- [ ] `initiated_request_handlers::handle_get_path_chunk()`
+
+## rsp handlers that still have no storage or consumer
+
+These are `rsp:*` handlers. They parse correctly today, but the parsed values are not stored anywhere useful yet.
+
+- [ ] `response_handlers::handle_speed()`
+- [ ] `response_handlers::handle_armed()`
+- [ ] `response_handlers::handle_mission_part_current()`
+
+## watch handlers that are still parser stubs
+
+- [ ] `incoming_request_handlers::handle_set_watch_keep_alive()`
+- [ ] `incoming_request_handlers::handle_set_watch_add()`
+- [ ] `incoming_request_handlers::handle_set_watch_remove()`
+
+## watch subsystem still missing
+
+- [ ] implement `src/core/bluetooth_communication/middleware/watch/watch_manager.cpp`
+- [ ] initialize `watch_manager` from the Bluetooth side
+- [ ] tick `watch_manager` from the Bluetooth side
 - [ ] connect `handle_set_watch_keep_alive()` to `watch_manager`
 - [ ] connect `handle_set_watch_add()` to `watch_manager`
 - [ ] connect `handle_set_watch_remove()` to `watch_manager`
-- [ ] define how due watch commands should be emitted from the pipeline
-
-## response-side state handling
-
-- [ ] decide where parsed `rsp:*` values should be stored or forwarded
-- [ ] connect `handle_speed()` to real response/state handling
-- [ ] connect `handle_armed()` to real response/state handling
-- [ ] connect `handle_mission_part_current()` to real response/state handling
-- [ ] connect `handle_ok()` and `handle_fail()` to real request/ack handling if needed
-
-## parser and pipeline follow-up
-
-- [ ] verify parser behavior with partial messages split across multiple ticks
-- [ ] verify parser behavior with malformed category text
-- [ ] verify parser behavior with unknown command names
-- [ ] verify timeout behavior in handlers under slow byte arrival
-- [ ] add timeout or retry handling for mission pull requests waiting on `rsp:ok()` or `rsp:fail(...)`
-- [ ] decide whether pipeline should log or count parser errors
-- [ ] decide whether the pipeline should process initiated watch output in the same tick or separately
-
-## tests and verification
-
-- [ ] add parser-focused tests or a small host-side harness
-- [ ] add handler parsing tests for simple commands
-- [ ] add handler parsing tests for mission transfer commands
-- [ ] test binary `path_chunk` parsing with realistic payloads
-- [ ] run full compile verification once the separate board/header issue is resolved
-
-## separate blocker outside this folder
-
-- [ ] fix the existing board/header issue that blocked compile verification
+- [ ] emit due watch commands from `bluetooth_communication_pipeline.cpp`

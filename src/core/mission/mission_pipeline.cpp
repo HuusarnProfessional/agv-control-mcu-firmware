@@ -3,10 +3,24 @@
 #include "mission_buffer.hpp"
 #include "mission_runner.hpp"
 #include "mission_transfer.hpp"
+#include "../control/primitives/pause/pause_pipeline.hpp"
 #include "../bluetooth_communication/middleware/middleware_handler_input_bridge.hpp"
+#include "../pure_pursuit/pure_pursuit.hpp"
 
 namespace
 {
+    enum class part_stage : std::uint8_t
+    {
+        idle = 0u,
+        waiting_before_path_start,
+        path_running,
+        waiting_before_part_complete
+    };
+
+    part_stage g_part_stage = part_stage::idle;
+    std::uint16_t g_stage_part_number = 0U;
+    mission_buffer::mission_part_view g_part_view = {};
+
     bool run_command(const mission_buffer::mission_command_view &command_view)
     {
         if (command_view.route == nullptr)
@@ -20,6 +34,179 @@ namespace
 
         return command_ok;
     }
+
+    void reset_part_execution_state()
+    {
+        g_part_stage = part_stage::idle;
+        g_stage_part_number = 0U;
+        g_part_view = {};
+        pure_pursuit::stop();
+    }
+
+    void abort_mission_and_reset()
+    {
+        mission_runner::abort_mission();
+        reset_part_execution_state();
+    }
+
+    bool complete_part_or_wait_for_pause()
+    {
+        if (pause_pipeline::is_active() == true)
+        {
+            g_part_stage = part_stage::waiting_before_part_complete;
+            return true;
+        }
+
+        return mission_runner::complete_current_part();
+    }
+
+    bool start_path_or_run_end_command(std::uint16_t current_part)
+    {
+        if (g_part_view.path_chunk_count > 0u)
+        {
+            const bool path_started = pure_pursuit::start_part(current_part);
+
+            if (path_started == false)
+            {
+                return false;
+            }
+
+            g_part_stage = part_stage::path_running;
+            return true;
+        }
+
+        const bool end_command_ok = run_command(g_part_view.end_command);
+
+        if (end_command_ok == false)
+        {
+            return false;
+        }
+
+        return complete_part_or_wait_for_pause();
+    }
+
+    void tick_waiting_before_path_start(std::uint16_t current_part)
+    {
+        if (pause_pipeline::is_active() == true)
+        {
+            return;
+        }
+
+        const bool continued_ok = start_path_or_run_end_command(current_part);
+
+        if (continued_ok == false)
+        {
+            abort_mission_and_reset();
+        }
+    }
+
+    void tick_path_running()
+    {
+        const pure_pursuit::snapshot path_snapshot = pure_pursuit::read_snapshot();
+
+        if (path_snapshot.active == true)
+        {
+            return;
+        }
+
+        if (path_snapshot.complete == false)
+        {
+            return;
+        }
+
+        if (path_snapshot.success == false)
+        {
+            abort_mission_and_reset();
+            return;
+        }
+
+        const bool end_command_ok = run_command(g_part_view.end_command);
+
+        if (end_command_ok == false)
+        {
+            abort_mission_and_reset();
+            return;
+        }
+
+        const bool complete_ok = complete_part_or_wait_for_pause();
+
+        if (complete_ok == false)
+        {
+            abort_mission_and_reset();
+            return;
+        }
+
+        if (g_part_stage == part_stage::waiting_before_part_complete)
+        {
+            return;
+        }
+
+        reset_part_execution_state();
+    }
+
+    void tick_waiting_before_part_complete()
+    {
+        if (pause_pipeline::is_active() == true)
+        {
+            return;
+        }
+
+        const bool complete_ok = mission_runner::complete_current_part();
+
+        if (complete_ok == false)
+        {
+            abort_mission_and_reset();
+            return;
+        }
+
+        reset_part_execution_state();
+    }
+
+    void begin_current_part(std::uint16_t current_part)
+    {
+        const bool has_part_info = mission_buffer::get_part_info(current_part, g_part_view);
+
+        if (has_part_info == false)
+        {
+            abort_mission_and_reset();
+            return;
+        }
+
+        g_stage_part_number = current_part;
+        const bool start_command_ok = run_command(g_part_view.start_command);
+
+        if (start_command_ok == false)
+        {
+            abort_mission_and_reset();
+            return;
+        }
+
+        if (pause_pipeline::is_active() == true)
+        {
+            g_part_stage = part_stage::waiting_before_path_start;
+            return;
+        }
+
+        const bool continued_ok = start_path_or_run_end_command(current_part);
+
+        if (continued_ok == false)
+        {
+            abort_mission_and_reset();
+            return;
+        }
+
+        if (g_part_stage == part_stage::path_running)
+        {
+            return;
+        }
+
+        if (g_part_stage == part_stage::waiting_before_part_complete)
+        {
+            return;
+        }
+
+        reset_part_execution_state();
+    }
 }
 
 namespace mission_pipeline
@@ -28,6 +215,7 @@ namespace mission_pipeline
     {
         mission_transfer::init();
         mission_runner::init();
+        reset_part_execution_state();
     }
 
     void tick(std::uint32_t now_ms)
@@ -39,21 +227,33 @@ namespace mission_pipeline
 
         if (has_current_part == false)
         {
+            reset_part_execution_state();
             return;
         }
 
-        mission_buffer::mission_part_view part_view = {};
-        const bool has_part_info = mission_buffer::get_part_info(current_part, part_view);
-
-        if (has_part_info == false)
+        if ((g_part_stage != part_stage::idle) && (g_stage_part_number != current_part))
         {
-            mission_runner::abort_mission();
+            reset_part_execution_state();
+        }
+
+        if (g_part_stage == part_stage::waiting_before_path_start)
+        {
+            tick_waiting_before_path_start(current_part);
             return;
         }
 
-        run_command(part_view.start_command);
-        run_command(part_view.end_command);
+        if (g_part_stage == part_stage::path_running)
+        {
+            tick_path_running();
+            return;
+        }
 
-        mission_runner::complete_current_part();
+        if (g_part_stage == part_stage::waiting_before_part_complete)
+        {
+            tick_waiting_before_part_complete();
+            return;
+        }
+
+        begin_current_part(current_part);
     }
 }

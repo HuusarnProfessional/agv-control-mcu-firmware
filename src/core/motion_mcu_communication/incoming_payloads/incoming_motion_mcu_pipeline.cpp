@@ -4,11 +4,8 @@
 #include "runtime/local_position_payload.hpp"
 #include "runtime/power_status_payload.hpp"
 #include "runtime/safety_status_payload.hpp"
-#include "debug/encoder_debug_payload.hpp"
-#include "debug/imu_debug_payload.hpp"
-#include "debug/obstacle_debug_payload.hpp"
-#include "debug/voltage_debug_payload.hpp"
 #include "../../../platform/esp_uart_api.hpp"
+#include "../heartbeat/motion_mcu_heartbeat.hpp"
 #include "../motion_mcu_routes.hpp"
 
 namespace
@@ -31,11 +28,7 @@ namespace
     {
         { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::local_position), local_position_payload::handle },
         { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::safety_status), safety_status_payload::handle },
-        { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::power_status), power_status_payload::handle },
-        { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::encoder_debug), encoder_debug_payload::handle },
-        { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::imu_debug), imu_debug_payload::handle },
-        { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::obstacle_debug), obstacle_debug_payload::handle },
-        { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::voltage_debug), voltage_debug_payload::handle }
+        { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::power_status), power_status_payload::handle }
     };
 
     void reset_parser()
@@ -46,7 +39,7 @@ namespace
         g_payload_index = 0U;
     }
 
-    void dispatch_payload()
+    void dispatch_payload(std::uint32_t now_ms)
     {
         for (const incoming_payload_definition::route &route : g_routes)
         {
@@ -54,6 +47,7 @@ namespace
             {
                 if (route.handler != nullptr)
                 {
+                    motion_mcu_heartbeat::notify_packet_received(now_ms);
                     route.handler(g_payload_buffer, g_payload_length);
                 }
 
@@ -62,7 +56,7 @@ namespace
         }
     }
 
-    void process_byte(std::uint8_t byte)
+    void process_byte(std::uint8_t byte, std::uint32_t now_ms)
     {
         if (g_parser_state == parser_state::wait_for_sync)
         {
@@ -94,7 +88,7 @@ namespace
 
             if (g_payload_length == 0U)
             {
-                dispatch_payload();
+                dispatch_payload(now_ms);
                 reset_parser();
                 return;
             }
@@ -110,7 +104,7 @@ namespace
 
             if (g_payload_index >= g_payload_length)
             {
-                dispatch_payload();
+                dispatch_payload(now_ms);
                 reset_parser();
             }
 
@@ -124,11 +118,12 @@ namespace incoming_motion_mcu_pipeline
     void init()
     {
         reset_parser();
+        motion_mcu_heartbeat::init();
     }
 
     void tick(std::uint32_t now_ms)
     {
-        (void)now_ms;
+        motion_mcu_heartbeat::tick(now_ms);
 
         std::uint8_t read_buffer[32u] = {};
         std::size_t read_count = esp_uart_api::read_bytes(
@@ -138,7 +133,7 @@ namespace incoming_motion_mcu_pipeline
 
         for (std::size_t index = 0u; index < read_count; index++)
         {
-            process_byte(read_buffer[index]);
+            process_byte(read_buffer[index], now_ms);
         }
     }
 }

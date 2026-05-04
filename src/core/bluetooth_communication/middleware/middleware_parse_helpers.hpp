@@ -13,6 +13,8 @@ namespace middleware_parse_helpers
 
     bool read_uint16_and_end(std::uint16_t &value_out, std::uint32_t timeout_us);
 
+    bool read_uint32_and_end(std::uint32_t &value_out, std::uint32_t timeout_us);
+
     bool read_int8_and_end(std::int8_t &value_out, std::uint32_t timeout_us);
 
     bool read_uint8_and_end(std::uint8_t &value_out, std::uint32_t timeout_us);

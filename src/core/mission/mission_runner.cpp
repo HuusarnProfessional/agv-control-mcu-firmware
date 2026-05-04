@@ -89,6 +89,7 @@ namespace mission_runner
         {
             g_is_running = false;
             g_current_part = 0u;
+            Serial.println("mission completed");
            
             return true;
         }
@@ -100,6 +101,7 @@ namespace mission_runner
         }
 
         g_is_running = false;
+        Serial.println("mission completed");
         
         return true;
     }
