@@ -4,8 +4,7 @@
 
 namespace global_positioning_pipeline
 {
+    void init();
 
-void init();
-
-void tick(std::uint32_t now_ms);
+    void tick(std::uint32_t now_ms);
 }
