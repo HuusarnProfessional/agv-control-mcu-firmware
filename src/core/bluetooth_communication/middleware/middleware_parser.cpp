@@ -65,6 +65,11 @@ namespace
             return middleware_types::message_category::response;
         }
 
+        if (strings_equal(g_category_buffer, "dbg") == true)
+        {
+            return middleware_types::message_category::debug;
+        }
+
         return middleware_types::message_category::invalid;
     }
 

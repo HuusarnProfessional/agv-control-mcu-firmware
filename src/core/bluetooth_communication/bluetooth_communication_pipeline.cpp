@@ -1,5 +1,6 @@
 #include "bluetooth_communication_pipeline.hpp"
 
+#include <Arduino.h>
 #include <cstring>
 
 #include "bluetooth_transport.hpp"
@@ -11,6 +12,12 @@ namespace
 {
     middleware_types::selected_route g_selected_route = {};
     bool g_has_selected_route = false;
+
+    void log_text(const char *prefix, const char *text)
+    {
+        Serial.print(prefix);
+        Serial.println(text);
+    }
 
     bool write_outgoing_request(const char *request_text)
     {
@@ -72,12 +79,26 @@ namespace bluetooth_communication_pipeline
                 {
                     g_has_selected_route = middleware_parser::take_selected_route(g_selected_route);
 
+                    if (g_has_selected_route == true)
+                    {
+                        log_text("bt route ", g_selected_route.command_name);
+                    }
+
                     break;
                 }
 
                 if ((parser_status == middleware_types::parser_status::parser_error) ||
                     (parser_status == middleware_types::parser_status::message_too_large))
                 {
+                    if (parser_status == middleware_types::parser_status::parser_error)
+                    {
+                        Serial.println("bt parser_error");
+                    }
+                    else
+                    {
+                        Serial.println("bt message_too_large");
+                    }
+
                     middleware_parser::reset();
                     break;
                 }
@@ -88,7 +109,19 @@ namespace bluetooth_communication_pipeline
         {
             if ((g_selected_route.matched_route != nullptr) && (g_selected_route.matched_route->handler != nullptr))
             {
-                g_selected_route.matched_route->handler();
+                const bool handler_ok = g_selected_route.matched_route->handler();
+
+                Serial.print("bt handler ");
+                Serial.print(g_selected_route.command_name);
+
+                if (handler_ok == true)
+                {
+                    Serial.println(" pass");
+                }
+                else
+                {
+                    Serial.println(" fail");
+                }
             }
 
             middleware_parser::reset();
@@ -103,10 +136,12 @@ namespace bluetooth_communication_pipeline
 
             if (request_ready == true)
             {
+                log_text("bt outgoing ", request_text);
                 const bool request_written = write_outgoing_request(request_text);
 
                 if (request_written == false)
                 {
+                    log_text("bt outgoing_fail ", request_text);
                     mission_transfer::handle_response_fail(2u);
                 }
             }

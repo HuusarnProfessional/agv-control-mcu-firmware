@@ -1,5 +1,7 @@
 #include "../incoming_request_handler_declarations.hpp"
 
+#include <Arduino.h>
+
 #include "../../../middleware_parse_helpers.hpp"
 #include "../../../../../mission/mission_buffer.hpp"
 #include "../../../../../mission/mission_transfer.hpp"
@@ -26,11 +28,13 @@ namespace incoming_request_handlers
 
         if (mission_id_parsed_ok == false)
         {
+            Serial.println("mission rx path_chunk parse mission_id fail");
             return false;
         }
 
         if (ended == true)
         {
+            Serial.println("mission rx path_chunk parse ended fail");
             return false;
         }
 
@@ -38,11 +42,13 @@ namespace incoming_request_handlers
 
         if (part_number_text_parsed_ok == false)
         {
+            Serial.println("mission rx path_chunk parse part fail");
             return false;
         }
 
         if ((ended == true) || (handler_helpers::parse_uint16(token_buffer, part_number) == false))
         {
+            Serial.println("mission rx path_chunk parse part value fail");
             return false;
         }
 
@@ -50,11 +56,13 @@ namespace incoming_request_handlers
 
         if (chunk_number_text_parsed_ok == false)
         {
+            Serial.println("mission rx path_chunk parse chunk fail");
             return false;
         }
 
         if ((ended == true) || (handler_helpers::parse_uint16(token_buffer, chunk_number) == false))
         {
+            Serial.println("mission rx path_chunk parse chunk value fail");
             return false;
         }
 
@@ -62,11 +70,13 @@ namespace incoming_request_handlers
 
         if (point_count_text_parsed_ok == false)
         {
+            Serial.println("mission rx path_chunk parse point_count fail");
             return false;
         }
 
         if ((ended == true) || (handler_helpers::parse_uint16(token_buffer, point_count) == false))
         {
+            Serial.println("mission rx path_chunk parse point_count value fail");
             return false;
         }
 
@@ -74,6 +84,7 @@ namespace incoming_request_handlers
 
         if (binary_length > sizeof(path_data))
         {
+            Serial.println("mission rx path_chunk parse binary_length fail");
             return false;
         }
 
@@ -81,6 +92,7 @@ namespace incoming_request_handlers
 
         if (binary_read_ok == false)
         {
+            Serial.println("mission rx path_chunk parse binary fail");
             return false;
         }
 
@@ -88,8 +100,20 @@ namespace incoming_request_handlers
 
         if (parsed_ok == false)
         {
+            Serial.println("mission rx path_chunk parse end fail");
             return false;
         }
+
+        Serial.print("mission rx path_chunk id=");
+        Serial.print(mission_id);
+        Serial.print(" part=");
+        Serial.print(part_number);
+        Serial.print(" chunk=");
+        Serial.print(chunk_number);
+        Serial.print(" points=");
+        Serial.print(point_count);
+        Serial.print(" bytes=");
+        Serial.println(static_cast<unsigned int>(binary_length));
 
         const mission_transfer::transfer_status transfer_status = mission_transfer::append_path_chunk(
             mission_id,
@@ -101,6 +125,8 @@ namespace incoming_request_handlers
 
         if (transfer_status != mission_transfer::transfer_status::ok)
         {
+            Serial.print("mission rx path_chunk store fail status=");
+            Serial.println(static_cast<unsigned int>(transfer_status));
             const bool fail_response_written = handler_helpers::write_response("rsp:fail(3)");
 
             if (fail_response_written == false)
@@ -111,9 +137,27 @@ namespace incoming_request_handlers
             return false;
         }
 
+        Serial.println("mission tx rsp:ok()");
         const bool ok_response_written = handler_helpers::write_response("rsp:ok()");
 
         if (ok_response_written == false)
+        {
+            return false;
+        }
+
+        const bool transfer_complete = mission_transfer::is_transfer_complete();
+
+        if (transfer_complete == false)
+        {
+            return true;
+        }
+
+        Serial.print("mission tx rsp:mission_ready(");
+        Serial.print(mission_id);
+        Serial.println(")");
+        const bool ready_response_written = handler_helpers::write_mission_ready_response(mission_id);
+
+        if (ready_response_written == false)
         {
             return false;
         }

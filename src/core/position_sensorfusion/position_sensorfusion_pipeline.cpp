@@ -1,7 +1,7 @@
 #include "position_sensorfusion_pipeline.hpp"
 
 #include "position_sensorfusion.hpp"
-#include "../motion_mcu_communication/motion_mcu_runtime.hpp"
+#include "../motion_mcu_communication/state/incoming/incoming_state.hpp"
 
 namespace position_sensorfusion_pipeline
 {
@@ -14,7 +14,7 @@ namespace position_sensorfusion_pipeline
     {
         (void)now_ms;
 
-        const motion_mcu_runtime::local_position_state local_position = motion_mcu_runtime::get_local_position();
+        const motion_mcu_incoming_state::local_position_state local_position = motion_mcu_incoming_state::get_local_position();
         position_sensorfusion::output_snapshot output = {};
         output.has_pose = local_position.has_pose;
         output.x_um = local_position.x_um;

@@ -1,8 +1,11 @@
 #include "mission_pipeline.hpp"
 
+#include <Arduino.h>
+
 #include "mission_buffer.hpp"
 #include "mission_runner.hpp"
 #include "mission_transfer.hpp"
+#include "../control/primitives/motion_primitive/motion_primitive_status_monitor.hpp"
 #include "../control/primitives/pause/pause_pipeline.hpp"
 #include "../bluetooth_communication/middleware/middleware_handler_input_bridge.hpp"
 #include "../pure_pursuit/pure_pursuit.hpp"
@@ -20,6 +23,21 @@ namespace
     part_stage g_part_stage = part_stage::idle;
     std::uint16_t g_stage_part_number = 0U;
     mission_buffer::mission_part_view g_part_view = {};
+    bool g_waiting_for_motion_primitive = false;
+
+    void log_pass(const char *step_name)
+    {
+        Serial.print("mission ");
+        Serial.print(step_name);
+        Serial.println(" pass");
+    }
+
+    void log_fail(const char *step_name)
+    {
+        Serial.print("mission ");
+        Serial.print(step_name);
+        Serial.println(" fail");
+    }
 
     bool run_command(const mission_buffer::mission_command_view &command_view)
     {
@@ -40,6 +58,7 @@ namespace
         g_part_stage = part_stage::idle;
         g_stage_part_number = 0U;
         g_part_view = {};
+        g_waiting_for_motion_primitive = false;
         pure_pursuit::stop();
     }
 
@@ -47,17 +66,39 @@ namespace
     {
         mission_runner::abort_mission();
         reset_part_execution_state();
+        log_fail("abort_mission_and_reset");
     }
 
     bool complete_part_or_wait_for_pause()
     {
         if (pause_pipeline::is_active() == true)
         {
+            log_pass("complete_part_or_wait_for_pause pause");
+            g_waiting_for_motion_primitive = false;
             g_part_stage = part_stage::waiting_before_part_complete;
             return true;
         }
 
-        return mission_runner::complete_current_part();
+        if (motion_primitive_status_monitor::is_waiting() == true)
+        {
+            log_pass("complete_part_or_wait_for_pause primitive");
+            g_waiting_for_motion_primitive = true;
+            g_part_stage = part_stage::waiting_before_part_complete;
+            return true;
+        }
+
+        const bool complete_ok = mission_runner::complete_current_part();
+
+        if (complete_ok == true)
+        {
+            log_pass("complete_current_part");
+        }
+        else
+        {
+            log_fail("complete_current_part");
+        }
+
+        return complete_ok;
     }
 
     bool start_path_or_run_end_command(std::uint16_t current_part)
@@ -68,10 +109,12 @@ namespace
 
             if (path_started == false)
             {
+                log_fail("start_path");
                 return false;
             }
 
             g_part_stage = part_stage::path_running;
+            log_pass("start_path");
             return true;
         }
 
@@ -79,9 +122,11 @@ namespace
 
         if (end_command_ok == false)
         {
+            log_fail("end_command");
             return false;
         }
 
+        log_pass("end_command");
         return complete_part_or_wait_for_pause();
     }
 
@@ -89,7 +134,30 @@ namespace
     {
         if (pause_pipeline::is_active() == true)
         {
+            log_pass("tick_waiting_before_path_start pause");
             return;
+        }
+
+        if (g_waiting_for_motion_primitive == true)
+        {
+            const motion_primitive_status_monitor::snapshot primitive_snapshot = motion_primitive_status_monitor::read_snapshot();
+
+            if (motion_primitive_status_monitor::is_waiting() == true)
+            {
+                log_pass("tick_waiting_before_path_start primitive");
+                return;
+            }
+
+            if ((motion_primitive_status_monitor::is_complete() == true) &&
+                (motion_primitive_status_monitor::was_successful() == false))
+            {
+                log_fail("tick_waiting_before_path_start primitive");
+                abort_mission_and_reset();
+                return;
+            }
+
+            (void)primitive_snapshot;
+            g_waiting_for_motion_primitive = false;
         }
 
         const bool continued_ok = start_path_or_run_end_command(current_part);
@@ -116,17 +184,23 @@ namespace
 
         if (path_snapshot.success == false)
         {
+            log_fail("path_running");
             abort_mission_and_reset();
             return;
         }
+
+        log_pass("path_running");
 
         const bool end_command_ok = run_command(g_part_view.end_command);
 
         if (end_command_ok == false)
         {
+            log_fail("end_command");
             abort_mission_and_reset();
             return;
         }
+
+        log_pass("end_command");
 
         const bool complete_ok = complete_part_or_wait_for_pause();
 
@@ -148,7 +222,27 @@ namespace
     {
         if (pause_pipeline::is_active() == true)
         {
+            log_pass("tick_waiting_before_part_complete pause");
             return;
+        }
+
+        if (g_waiting_for_motion_primitive == true)
+        {
+            if (motion_primitive_status_monitor::is_waiting() == true)
+            {
+                log_pass("tick_waiting_before_part_complete primitive");
+                return;
+            }
+
+            if ((motion_primitive_status_monitor::is_complete() == true) &&
+                (motion_primitive_status_monitor::was_successful() == false))
+            {
+                log_fail("tick_waiting_before_part_complete primitive");
+                abort_mission_and_reset();
+                return;
+            }
+
+            g_waiting_for_motion_primitive = false;
         }
 
         const bool complete_ok = mission_runner::complete_current_part();
@@ -168,6 +262,7 @@ namespace
 
         if (has_part_info == false)
         {
+            log_fail("get_part_info");
             abort_mission_and_reset();
             return;
         }
@@ -177,12 +272,25 @@ namespace
 
         if (start_command_ok == false)
         {
+            log_fail("start_command");
             abort_mission_and_reset();
             return;
         }
 
+        log_pass("start_command");
+
         if (pause_pipeline::is_active() == true)
         {
+            log_pass("begin_current_part pause");
+            g_waiting_for_motion_primitive = false;
+            g_part_stage = part_stage::waiting_before_path_start;
+            return;
+        }
+
+        if (motion_primitive_status_monitor::is_waiting() == true)
+        {
+            log_pass("begin_current_part primitive");
+            g_waiting_for_motion_primitive = true;
             g_part_stage = part_stage::waiting_before_path_start;
             return;
         }

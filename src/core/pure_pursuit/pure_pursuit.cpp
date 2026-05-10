@@ -1,5 +1,6 @@
 #include "pure_pursuit.hpp"
 
+#include <Arduino.h>
 #include <cmath>
 
 #include "pure_pursuit_tuning.hpp"
@@ -20,12 +21,35 @@ namespace
 
     pure_pursuit::snapshot g_snapshot = {};
 
+    void log_pass(const char *step_name)
+    {
+        Serial.print("pure_pursuit ");
+        Serial.print(step_name);
+        Serial.println(" pass");
+    }
+
+    void log_fail(const char *step_name)
+    {
+        Serial.print("pure_pursuit ");
+        Serial.print(step_name);
+        Serial.println(" fail");
+    }
+
     void finish_path(bool success)
     {
         pure_pursuit_internal::send_stop_motion(g_snapshot);
         g_snapshot.active = false;
         g_snapshot.complete = true;
         g_snapshot.success = success;
+
+        if (success == true)
+        {
+            log_pass("finish_path");
+        }
+        else
+        {
+            log_fail("finish_path");
+        }
     }
 
     bool tick_validate_runtime(const position_sensorfusion::output_snapshot &local_position, const motion_mcu_heartbeat::snapshot &heartbeat)
@@ -33,12 +57,20 @@ namespace
         if (heartbeat.packet_timed_out == true)
         {
             pure_pursuit_internal::send_stop_motion(g_snapshot);
+            g_snapshot.active = false;
+            g_snapshot.complete = true;
+            g_snapshot.success = false;
+            log_fail("tick_validate_runtime heartbeat");
             return false;
         }
 
         if (local_position.has_pose == false)
         {
             pure_pursuit_internal::send_stop_motion(g_snapshot);
+            g_snapshot.active = false;
+            g_snapshot.complete = true;
+            g_snapshot.success = false;
+            log_fail("tick_validate_runtime local_position");
             return false;
         }
 
@@ -265,6 +297,47 @@ namespace
         g_snapshot.left_mm = target.left_mm;
         g_snapshot.heading_error_deg = heading_error_deg;
     }
+
+    void log_tracking_state(
+        double robot_x_mm,
+        double robot_y_mm,
+        double heading_deg,
+        const closest_path_state &closest,
+        const pure_pursuit_internal::driveable_target_state &target)
+    {
+        Serial.print("pure_pursuit pose x_mm=");
+        Serial.print(robot_x_mm, 1);
+        Serial.print(" y_mm=");
+        Serial.print(robot_y_mm, 1);
+        Serial.print(" heading_deg=");
+        Serial.println(heading_deg, 1);
+
+        Serial.print("pure_pursuit closest idx=");
+        Serial.print(static_cast<unsigned int>(closest.segment_index));
+        Serial.print(" x_mm=");
+        Serial.print(closest.x_mm, 1);
+        Serial.print(" y_mm=");
+        Serial.println(closest.y_mm, 1);
+
+        Serial.print("pure_pursuit target idx=");
+        Serial.print(static_cast<unsigned int>(target.point_index));
+        Serial.print(" x_mm=");
+        Serial.print(target.x_mm, 1);
+        Serial.print(" y_mm=");
+        Serial.print(target.y_mm, 1);
+        Serial.print(" forward_mm=");
+        Serial.print(target.forward_mm, 1);
+        Serial.print(" left_mm=");
+        Serial.print(target.left_mm, 1);
+        Serial.print(" curvature=");
+        Serial.print(target.curvature, 5);
+        Serial.print(" valid=");
+        Serial.print(target.valid ? 1 : 0);
+        Serial.print(" forward_ok=");
+        Serial.print(target.forward_ok ? 1 : 0);
+        Serial.print(" curvature_ok=");
+        Serial.println(target.curvature_ok ? 1 : 0);
+    }
 }
 
 namespace pure_pursuit
@@ -324,6 +397,7 @@ namespace pure_pursuit
         const double abs_heading_error_deg = std::fabs(heading_error_deg);
 
         write_target_snapshot(target, heading_error_deg);
+        log_tracking_state(x_mm, y_mm, heading_deg, closest, target);
 
         std::int32_t linear_velocity_mm_s = 0;
         std::int32_t yaw_rate_mdeg_s = 0;
@@ -340,6 +414,7 @@ namespace pure_pursuit
             if (target.distance_sq_mm > 1.0)
             {
                 yaw_rate_mdeg_s = pure_pursuit_internal::compute_tracking_yaw_rate_mdeg_s(target.curvature, linear_velocity_mm_s);
+                pure_pursuit_internal::apply_heading_p_yaw_correction(yaw_rate_mdeg_s, heading_error_deg);
                 pure_pursuit_internal::apply_yaw_rate_speed_limit(linear_velocity_mm_s, yaw_rate_mdeg_s);
             }
 
@@ -349,6 +424,8 @@ namespace pure_pursuit
             }
         }
 
+        Serial.print("pure_pursuit heading_error_deg=");
+        Serial.println(heading_error_deg, 2);
         pure_pursuit_internal::send_motion_command(g_snapshot, linear_velocity_mm_s, yaw_rate_mdeg_s);
     }
 
@@ -366,6 +443,7 @@ namespace pure_pursuit
         {
             g_snapshot = {};
             g_snapshot.part_number = part_number;
+            log_fail("start_part");
             return false;
         }
 
@@ -376,7 +454,18 @@ namespace pure_pursuit
         g_snapshot.point_count = point_count;
         g_snapshot.closest_point_index = 0u;
         g_snapshot.lookahead_point_index = 0u;
-        return g_snapshot.point_count > 0u;
+        const bool start_ok = g_snapshot.point_count > 0u;
+
+        if (start_ok == true)
+        {
+            log_pass("start_part");
+        }
+        else
+        {
+            log_fail("start_part");
+        }
+
+        return start_ok;
     }
 
     void stop()

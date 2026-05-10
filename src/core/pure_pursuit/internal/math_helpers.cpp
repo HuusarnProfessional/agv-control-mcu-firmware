@@ -105,6 +105,27 @@ namespace pure_pursuit_internal
         return static_cast<std::int32_t>(commanded_yaw_rate_mdeg_s);
     }
 
+    void apply_heading_p_yaw_correction(std::int32_t &yaw_rate_mdeg_s, double heading_error_deg)
+    {
+        const double correction_mdeg_s =
+            heading_error_deg * pure_pursuit_tuning::k_mission_heading_p_yaw_rate_mdeg_s_per_deg;
+
+        double corrected_yaw_rate_mdeg_s =
+            static_cast<double>(yaw_rate_mdeg_s) + correction_mdeg_s;
+
+        if (corrected_yaw_rate_mdeg_s > pure_pursuit_tuning::k_mission_max_yaw_rate_mdeg_s)
+        {
+            corrected_yaw_rate_mdeg_s = pure_pursuit_tuning::k_mission_max_yaw_rate_mdeg_s;
+        }
+
+        if (corrected_yaw_rate_mdeg_s < -pure_pursuit_tuning::k_mission_max_yaw_rate_mdeg_s)
+        {
+            corrected_yaw_rate_mdeg_s = -pure_pursuit_tuning::k_mission_max_yaw_rate_mdeg_s;
+        }
+
+        yaw_rate_mdeg_s = static_cast<std::int32_t>(corrected_yaw_rate_mdeg_s);
+    }
+
     void apply_yaw_rate_speed_limit(std::int32_t &linear_velocity_mm_s, std::int32_t yaw_rate_mdeg_s)
     {
         if (pure_pursuit_tuning::k_mission_max_yaw_rate_mdeg_s <= 0)

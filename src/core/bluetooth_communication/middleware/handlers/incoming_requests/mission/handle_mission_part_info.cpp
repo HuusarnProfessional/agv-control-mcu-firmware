@@ -1,5 +1,7 @@
 #include "../incoming_request_handler_declarations.hpp"
 
+#include <Arduino.h>
+
 #include "../../../middleware_parse_helpers.hpp"
 #include "../../../route/middleware_route_table.hpp"
 #include "../../../../../mission/mission_transfer.hpp"
@@ -105,11 +107,13 @@ namespace incoming_request_handlers
 
         if (mission_id_parsed_ok == false)
         {
+            Serial.println("mission rx mission_part_info parse mission_id fail");
             return false;
         }
 
         if (ended == true)
         {
+            Serial.println("mission rx mission_part_info parse ended fail");
             return false;
         }
 
@@ -117,11 +121,13 @@ namespace incoming_request_handlers
 
         if (part_number_text_parsed_ok == false)
         {
+            Serial.println("mission rx mission_part_info parse part fail");
             return false;
         }
 
         if ((ended == true) || (handler_helpers::parse_uint16(token_buffer, part_number) == false))
         {
+            Serial.println("mission rx mission_part_info parse part value fail");
             return false;
         }
 
@@ -129,16 +135,19 @@ namespace incoming_request_handlers
 
         if (start_command_parsed_ok == false)
         {
+            Serial.println("mission rx mission_part_info parse start_command fail");
             return false;
         }
 
         if (ended == true)
         {
+            Serial.println("mission rx mission_part_info parse start_command ended fail");
             return false;
         }
 
         if (parse_stored_command(start_command, start_command_view) == false)
         {
+            Serial.println("mission rx mission_part_info parse stored start_command fail");
             return false;
         }
 
@@ -146,16 +155,19 @@ namespace incoming_request_handlers
 
         if (end_command_parsed_ok == false)
         {
+            Serial.println("mission rx mission_part_info parse end_command fail");
             return false;
         }
 
         if (ended == true)
         {
+            Serial.println("mission rx mission_part_info parse end_command ended fail");
             return false;
         }
 
         if (parse_stored_command(end_command, end_command_view) == false)
         {
+            Serial.println("mission rx mission_part_info parse stored end_command fail");
             return false;
         }
 
@@ -163,8 +175,20 @@ namespace incoming_request_handlers
 
         if (parsed_ok == false)
         {
+            Serial.println("mission rx mission_part_info parse chunk_count fail");
             return false;
         }
+
+        Serial.print("mission rx mission_part_info id=");
+        Serial.print(mission_id);
+        Serial.print(" part=");
+        Serial.print(part_number);
+        Serial.print(" start=");
+        Serial.print(start_command);
+        Serial.print(" end=");
+        Serial.print(end_command);
+        Serial.print(" chunks=");
+        Serial.println(path_chunk_count);
 
         const mission_transfer::transfer_status transfer_status = mission_transfer::set_part_info(
             mission_id,
@@ -175,6 +199,8 @@ namespace incoming_request_handlers
 
         if (transfer_status != mission_transfer::transfer_status::ok)
         {
+            Serial.print("mission rx mission_part_info store fail status=");
+            Serial.println(static_cast<unsigned int>(transfer_status));
             const bool fail_response_written = handler_helpers::write_response("rsp:fail(3)");
 
             if (fail_response_written == false)
@@ -185,9 +211,27 @@ namespace incoming_request_handlers
             return false;
         }
 
+        Serial.println("mission tx rsp:ok()");
         const bool ok_response_written = handler_helpers::write_response("rsp:ok()");
 
         if (ok_response_written == false)
+        {
+            return false;
+        }
+
+        const bool transfer_complete = mission_transfer::is_transfer_complete();
+
+        if (transfer_complete == false)
+        {
+            return true;
+        }
+
+        Serial.print("mission tx rsp:mission_ready(");
+        Serial.print(mission_id);
+        Serial.println(")");
+        const bool ready_response_written = handler_helpers::write_mission_ready_response(mission_id);
+
+        if (ready_response_written == false)
         {
             return false;
         }

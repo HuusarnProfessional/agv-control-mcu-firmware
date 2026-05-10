@@ -1,0 +1,32 @@
+#pragma once
+
+namespace debug_handlers
+{
+    bool handle_set_debug_stream();
+    bool handle_get_status();
+    bool handle_get_stop();
+    bool handle_get_encoder_raw();
+    bool handle_get_encoder_deg();
+    bool handle_get_encoder_time();
+    bool handle_get_encoder_time_ms();
+    bool handle_get_encoder_status();
+    bool handle_get_obstacle_distance();
+    bool handle_get_imu_gyro();
+    bool handle_get_imu_accel();
+    bool handle_get_imu_mag();
+    bool handle_get_imu_raw_gyro();
+    bool handle_get_imu_raw_accel();
+    bool handle_get_imu_raw_mag();
+    bool handle_get_imu_calibrated_gyro();
+    bool handle_get_imu_calibrated_accel();
+    bool handle_get_imu_debug();
+    bool handle_get_imu_status();
+    bool handle_get_imu_time_ms();
+    bool handle_get_imu_has_calibration();
+    bool handle_get_motion_debug();
+    bool handle_get_motion_primitive_status();
+    bool handle_get_pure_pursuit_debug();
+    bool handle_get_local_position_model_debug();
+    bool handle_get_voltage_debug();
+    bool handle_debug_command();
+}

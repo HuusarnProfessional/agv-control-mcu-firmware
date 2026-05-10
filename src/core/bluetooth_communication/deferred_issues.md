@@ -1,6 +1,6 @@
 # deferred issues
 
-This file lists only the work that is still missing on the ESP side.
+This file lists only the work that is still missing on the ESP Bluetooth side.
 
 Completed work is intentionally omitted.
 
@@ -30,11 +30,11 @@ These handlers parse their arguments today, but still end in `return false;` and
 
 ## motion mcu integration still missing at the upper layer
 
-The STM payload senders now exist, but the Bluetooth/control layer is still not using them.
+The STM payload senders now exist, but the Bluetooth/control layer is still not using all of them.
 
 - [ ] decide how armed-state should affect outgoing STM motion commands
 - [ ] decide whether `pause_payload` should remain unused on ESP because pause now lives locally
-- [ ] decide whether `trailer_status`, `obstacle_safety_control`, and similar STM service payloads are needed now or can stay deferred
+- [ ] decide whether `trailer_status` and similar STM service payloads are needed now or can stay deferred
 - [ ] revisit the temporary rotation-speed mapping used by `set_drive_rotate_deg(...)` if `set_speed(...)` later gets stricter semantics
 
 ## stm heartbeat follow-up
@@ -42,9 +42,18 @@ The STM payload senders now exist, but the Bluetooth/control layer is still not 
 - [ ] decide what control behavior should happen when `motion_mcu_heartbeat` reports timeout
 - [ ] decide whether Bluetooth-visible commands should fail differently when the STM link is timed out
 
+## debug follow-up
+
+Debug streams and debug getters now exist, but a few behavior choices are still open.
+
+- [ ] decide whether debug getters should report cache staleness explicitly, instead of only `stream_enabled` and `valid`
+- [ ] decide whether `get_status()` and `get_stop()` are stable enough to become Java/watch-facing contracts, or should stay temporary debug commands
+- [ ] decide whether any removed debug aliases should come back only if Java proves it needs them
+
 ## protocol alignment still open
 
 - [ ] lock the official mission command vocabulary with the Java/KTS side
+- [ ] lock the official local-position reset vocabulary now that `set_position_local_reset()` exists
 - [ ] decide whether unused `rsp:*` routes should remain in the route table or be removed until they have a real consumer
 
 ## initiated request handlers that are still parser stubs
@@ -72,7 +81,9 @@ These are `rsp:*` handlers. They parse correctly today, but the parsed values ar
 
 ## watch subsystem still missing
 
-- [ ] implement `src/core/bluetooth_communication/middleware/watch/watch_manager.cpp`
+`watch_manager.cpp` exists, but the subsystem is still only a shell and is not connected to Bluetooth flow yet.
+
+- [ ] implement real logic in `src/core/bluetooth_communication/middleware/watch/watch_manager.cpp`
 - [ ] initialize `watch_manager` from the Bluetooth side
 - [ ] tick `watch_manager` from the Bluetooth side
 - [ ] connect `handle_set_watch_keep_alive()` to `watch_manager`

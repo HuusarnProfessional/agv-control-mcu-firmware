@@ -1,5 +1,7 @@
 #include "../response_handler_declarations.hpp"
 
+#include <Arduino.h>
+
 #include "../../../middleware_parse_helpers.hpp"
 #include "../../../../../mission/mission_transfer.hpp"
 
@@ -15,6 +17,7 @@ namespace response_handlers
             return false;
         }
 
+        Serial.println("mission rx rsp:ok()");
         mission_transfer::handle_response_ok();
 
         return true;
