@@ -16,5 +16,7 @@ constexpr std::uint8_t dwm1001_uart_tx_pin = 25u;
 constexpr std::uint32_t dwm1001_uart_baud_rate = 115200u;
 
 void init();
+
 void tick(std::uint32_t now_ms);
+
 }

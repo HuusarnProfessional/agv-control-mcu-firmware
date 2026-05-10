@@ -28,12 +28,11 @@ void handle_position_frame(const dwm1001_position_link::position_frame &frame)
 {
     dwm1001_tlv_parser::position_response response = {};
 
-    const dwm1001_tlv_parser::parse_status status =
-        dwm1001_tlv_parser::parse_position_response(
-            frame.data,
-            frame.length,
-            response
-        );
+    const dwm1001_tlv_parser::parse_status status = dwm1001_tlv_parser::parse_position_response(
+        frame.data,
+        frame.length,
+        response
+    );
 
     if (status != dwm1001_tlv_parser::parse_status::ok)
     {
@@ -67,4 +66,5 @@ void tick(std::uint32_t now_ms)
 
     handle_position_frame(frame);
 }
+
 }

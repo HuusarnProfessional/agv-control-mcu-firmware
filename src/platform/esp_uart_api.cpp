@@ -57,6 +57,7 @@ void begin_context(uart_context &context, std::uint32_t baud_rate, std::uint8_t 
 
     context.initialized = true;
 }
+
 }
 
 namespace esp_uart_api
@@ -79,11 +80,7 @@ void init()
     );
 }
 
-uart_status write_bytes(
-    uart_channel channel,
-    const std::uint8_t *data,
-    std::size_t length
-)
+uart_status write_bytes(uart_channel channel, const std::uint8_t *data, std::size_t length)
 {
     uart_context *context = find_context(channel);
 
@@ -107,7 +104,7 @@ uart_status write_bytes(
         return uart_status::ok;
     }
 
-    std::size_t bytes_written = context->serial->write(data, length);
+    const std::size_t bytes_written = context->serial->write(data, length);
 
     if (bytes_written != length)
     {
@@ -117,11 +114,7 @@ uart_status write_bytes(
     return uart_status::ok;
 }
 
-std::size_t read_bytes(
-    uart_channel channel,
-    std::uint8_t *data_out,
-    std::size_t capacity
-)
+std::size_t read_bytes(uart_channel channel, std::uint8_t *data_out, std::size_t capacity)
 {
     uart_context *context = find_context(channel);
 
@@ -147,13 +140,18 @@ std::size_t read_bytes(
 
     std::size_t bytes_read = 0u;
 
-    while ((context->serial->available() > 0) && (bytes_read < capacity))
+    for (std::size_t index = 0u; index < capacity; index++)
     {
-        int byte_value = context->serial->read();
+        if (context->serial->available() <= 0)
+        {
+            return bytes_read;
+        }
+
+        const int byte_value = context->serial->read();
 
         if (byte_value < 0)
         {
-            break;
+            return bytes_read;
         }
 
         data_out[bytes_read] = static_cast<std::uint8_t>(byte_value);
@@ -177,7 +175,7 @@ std::size_t available_bytes(uart_channel channel)
         return 0u;
     }
 
-    int available_count = context->serial->available();
+    const int available_count = context->serial->available();
 
     if (available_count < 0)
     {
@@ -186,4 +184,5 @@ std::size_t available_bytes(uart_channel channel)
 
     return static_cast<std::size_t>(available_count);
 }
+
 }

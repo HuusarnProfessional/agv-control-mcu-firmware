@@ -8,7 +8,11 @@ namespace
 constexpr std::uint32_t request_interval_ms = 100u;
 constexpr std::uint32_t response_timeout_ms = 50u;
 
-constexpr std::uint8_t position_get_command[2] = { 0x02u, 0x00u };
+constexpr std::uint8_t position_get_command[2] =
+{
+    0x02u,
+    0x00u
+};
 
 enum class link_state : std::uint8_t
 {
@@ -52,7 +56,7 @@ void reset_response_buffer()
     }
 }
 
-void reset_active_request(std::uint32_t now_ms)
+void finish_active_request(std::uint32_t now_ms)
 {
     g_active_request_id = 0u;
     g_last_request_finish_time_ms = now_ms;
@@ -100,6 +104,8 @@ bool start_position_request(std::uint32_t now_ms)
 
     if (write_status != esp_uart_api::uart_status::ok)
     {
+        g_last_request_finish_time_ms = now_ms;
+        g_has_finished_request_once = true;
         return false;
     }
 
@@ -123,7 +129,7 @@ bool copy_completed_frame(std::uint32_t now_ms, dwm1001_position_link::position_
         frame_out.data[index] = g_response_buffer[index];
     }
 
-    reset_active_request(now_ms);
+    finish_active_request(now_ms);
 
     return true;
 }
@@ -158,9 +164,7 @@ bool tick_idle(std::uint32_t now_ms)
         return false;
     }
 
-    const std::size_t stale_byte_count = esp_uart_api::available_bytes(
-        esp_uart_api::uart_channel::dwm1001
-    );
+    const std::size_t stale_byte_count = esp_uart_api::available_bytes(esp_uart_api::uart_channel::dwm1001);
 
     if (stale_byte_count > 0u)
     {
@@ -186,7 +190,7 @@ bool tick_waiting_for_response(std::uint32_t now_ms, dwm1001_position_link::posi
 
     if (elapsed_time_ms >= response_timeout_ms)
     {
-        reset_active_request(now_ms);
+        finish_active_request(now_ms);
         return false;
     }
 
