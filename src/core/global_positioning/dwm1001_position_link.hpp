@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace dwm1001_position_reader
+namespace dwm1001_position_link
 {
 
 constexpr std::size_t position_frame_size = 18u;

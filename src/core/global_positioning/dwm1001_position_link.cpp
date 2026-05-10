@@ -1,4 +1,4 @@
-#include "dwm1001_position_reader.hpp"
+#include "dwm1001_position_link.hpp"
 
 #include "../../platform/esp_uart_api.hpp"
 
@@ -18,7 +18,7 @@ enum class reader_state : std::uint8_t
 
 reader_state g_state = reader_state::idle;
 
-std::uint8_t g_response_buffer[dwm1001_position_reader::position_frame_size] = {};
+std::uint8_t g_response_buffer[dwm1001_position_link::position_frame_size] = {};
 std::size_t g_response_length = 0u;
 
 std::uint32_t g_next_request_id = 1u;
@@ -46,7 +46,7 @@ void reset_response_buffer()
 {
     g_response_length = 0u;
 
-    for (std::size_t index = 0u; index < dwm1001_position_reader::position_frame_size; index++)
+    for (std::size_t index = 0u; index < dwm1001_position_link::position_frame_size; index++)
     {
         g_response_buffer[index] = 0u;
     }
@@ -81,14 +81,22 @@ bool request_interval_has_elapsed(std::uint32_t now_ms)
 
 void drop_stale_bytes_step()
 {
-    std::uint8_t drop_buffer[dwm1001_position_reader::position_frame_size] = {};
+    std::uint8_t drop_buffer[dwm1001_position_link::position_frame_size] = {};
 
-    esp_uart_api::read_bytes(esp_uart_api::dwm1001_uart_id, drop_buffer, dwm1001_position_reader::position_frame_size);
+    esp_uart_api::read_bytes(
+        esp_uart_api::uart_channel::dwm1001,
+        drop_buffer,
+        dwm1001_position_link::position_frame_size
+    );
 }
 
 bool start_position_request(std::uint32_t now_ms)
 {
-    const esp_uart_api::uart_status write_status = esp_uart_api::write_bytes(esp_uart_api::dwm1001_uart_id, position_get_command, sizeof(position_get_command));
+    const esp_uart_api::uart_status write_status = esp_uart_api::write_bytes(
+        esp_uart_api::uart_channel::dwm1001,
+        position_get_command,
+        sizeof(position_get_command)
+    );
 
     if (write_status != esp_uart_api::uart_status::ok)
     {
@@ -104,13 +112,13 @@ bool start_position_request(std::uint32_t now_ms)
     return true;
 }
 
-bool copy_completed_frame(std::uint32_t now_ms, dwm1001_position_reader::position_frame &frame_out)
+bool copy_completed_frame(std::uint32_t now_ms, dwm1001_position_link::position_frame &frame_out)
 {
     frame_out.request_id = g_active_request_id;
     frame_out.received_time_ms = now_ms;
     frame_out.length = g_response_length;
 
-    for (std::size_t index = 0u; index < dwm1001_position_reader::position_frame_size; index++)
+    for (std::size_t index = 0u; index < dwm1001_position_link::position_frame_size; index++)
     {
         frame_out.data[index] = g_response_buffer[index];
     }
@@ -122,14 +130,18 @@ bool copy_completed_frame(std::uint32_t now_ms, dwm1001_position_reader::positio
 
 void read_available_response_bytes()
 {
-    const std::size_t remaining_capacity = dwm1001_position_reader::position_frame_size - g_response_length;
+    const std::size_t remaining_capacity = dwm1001_position_link::position_frame_size - g_response_length;
 
     if (remaining_capacity == 0u)
     {
         return;
     }
 
-    const std::size_t bytes_read = esp_uart_api::read_bytes(esp_uart_api::dwm1001_uart_id, &g_response_buffer[g_response_length], remaining_capacity);
+    const std::size_t bytes_read = esp_uart_api::read_bytes(
+        esp_uart_api::uart_channel::dwm1001,
+        &g_response_buffer[g_response_length],
+        remaining_capacity
+    );
 
     if (bytes_read == 0u)
     {
@@ -146,7 +158,7 @@ bool tick_idle(std::uint32_t now_ms)
         return false;
     }
 
-    const std::size_t stale_byte_count = esp_uart_api::available_bytes(esp_uart_api::dwm1001_uart_id);
+    const std::size_t stale_byte_count = esp_uart_api::available_bytes(esp_uart_api::uart_channel::dwm1001);
 
     if (stale_byte_count > 0u)
     {
@@ -159,11 +171,11 @@ bool tick_idle(std::uint32_t now_ms)
     return false;
 }
 
-bool tick_waiting_for_response(std::uint32_t now_ms, dwm1001_position_reader::position_frame &frame_out)
+bool tick_waiting_for_response(std::uint32_t now_ms, dwm1001_position_link::position_frame &frame_out)
 {
     read_available_response_bytes();
 
-    if (g_response_length == dwm1001_position_reader::position_frame_size)
+    if (g_response_length == dwm1001_position_link::position_frame_size)
     {
         return copy_completed_frame(now_ms, frame_out);
     }
@@ -181,7 +193,7 @@ bool tick_waiting_for_response(std::uint32_t now_ms, dwm1001_position_reader::po
 
 }
 
-namespace dwm1001_position_reader
+namespace dwm1001_position_link
 {
 
 void init()

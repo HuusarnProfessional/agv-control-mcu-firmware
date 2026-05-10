@@ -32,7 +32,7 @@ namespace outgoing_payload_definition
         }
 
         const esp_uart_api::uart_status status = esp_uart_api::write_bytes(
-            esp_uart_api::motion_mcu_uart_id,
+            esp_uart_api::uart_channel::motion_mcu,
             packet,
             static_cast<std::size_t>(3U + payload.payload_length));
 

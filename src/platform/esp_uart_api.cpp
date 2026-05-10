@@ -6,38 +6,39 @@
 
 namespace
 {
+
 HardwareSerial g_motion_mcu_serial(board_esp32_wroom32::motion_mcu_uart_id);
 HardwareSerial g_dwm1001_serial(board_esp32_wroom32::dwm1001_uart_id);
 
 struct uart_context
 {
-    std::uint8_t uart_id;
+    esp_uart_api::uart_channel channel;
     HardwareSerial *serial;
     bool initialized;
 };
 
 uart_context g_motion_mcu_context =
 {
-    board_esp32_wroom32::motion_mcu_uart_id,
+    esp_uart_api::uart_channel::motion_mcu,
     &g_motion_mcu_serial,
     false
 };
 
 uart_context g_dwm1001_context =
 {
-    board_esp32_wroom32::dwm1001_uart_id,
+    esp_uart_api::uart_channel::dwm1001,
     &g_dwm1001_serial,
     false
 };
 
-uart_context *find_context(std::uint8_t uart_id)
+uart_context *find_context(esp_uart_api::uart_channel channel)
 {
-    if (g_motion_mcu_context.uart_id == uart_id)
+    if (g_motion_mcu_context.channel == channel)
     {
         return &g_motion_mcu_context;
     }
 
-    if (g_dwm1001_context.uart_id == uart_id)
+    if (g_dwm1001_context.channel == channel)
     {
         return &g_dwm1001_context;
     }
@@ -78,9 +79,13 @@ void init()
     );
 }
 
-uart_status write_bytes(std::uint8_t uart_id, const std::uint8_t *data, std::size_t length)
+uart_status write_bytes(
+    uart_channel channel,
+    const std::uint8_t *data,
+    std::size_t length
+)
 {
-    uart_context *context = find_context(uart_id);
+    uart_context *context = find_context(channel);
 
     if (context == nullptr)
     {
@@ -112,9 +117,13 @@ uart_status write_bytes(std::uint8_t uart_id, const std::uint8_t *data, std::siz
     return uart_status::ok;
 }
 
-std::size_t read_bytes(std::uint8_t uart_id, std::uint8_t *data_out, std::size_t capacity)
+std::size_t read_bytes(
+    uart_channel channel,
+    std::uint8_t *data_out,
+    std::size_t capacity
+)
 {
-    uart_context *context = find_context(uart_id);
+    uart_context *context = find_context(channel);
 
     if (context == nullptr)
     {
@@ -154,9 +163,9 @@ std::size_t read_bytes(std::uint8_t uart_id, std::uint8_t *data_out, std::size_t
     return bytes_read;
 }
 
-std::size_t available_bytes(std::uint8_t uart_id)
+std::size_t available_bytes(uart_channel channel)
 {
-    uart_context *context = find_context(uart_id);
+    uart_context *context = find_context(channel);
 
     if (context == nullptr)
     {

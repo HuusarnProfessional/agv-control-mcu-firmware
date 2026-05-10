@@ -145,7 +145,7 @@ namespace incoming_motion_mcu_pipeline
 
         std::uint8_t read_buffer[32u] = {};
         std::size_t read_count = esp_uart_api::read_bytes(
-            esp_uart_api::motion_mcu_uart_id,
+            esp_uart_api::uart_channel::motion_mcu,
             read_buffer,
             sizeof(read_buffer));
 
