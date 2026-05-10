@@ -3,28 +3,40 @@
 namespace
 {
 
-std::uint32_t read_u32_little_endian(const std::uint8_t *data)
+constexpr std::size_t return_tlv_type_index = 0u;
+constexpr std::size_t return_tlv_length_index = 1u;
+constexpr std::size_t return_tlv_error_code_index = 2u;
+
+constexpr std::size_t position_tlv_type_index = 3u;
+constexpr std::size_t position_tlv_length_index = 4u;
+
+constexpr std::size_t position_x_index = 5u;
+constexpr std::size_t position_y_index = 9u;
+constexpr std::size_t position_z_index = 13u;
+constexpr std::size_t position_quality_factor_index = 17u;
+
+constexpr std::uint8_t return_tlv_type = 0x40u;
+constexpr std::uint8_t return_tlv_length = 0x01u;
+constexpr std::uint8_t return_error_code_ok = 0x00u;
+
+constexpr std::uint8_t position_tlv_type = 0x41u;
+constexpr std::uint8_t position_tlv_length = 0x0du;
+
+std::int32_t read_i32_little_endian(const std::uint8_t *data)
 {
     const std::uint32_t byte_0 = data[0];
     const std::uint32_t byte_1 = data[1];
     const std::uint32_t byte_2 = data[2];
     const std::uint32_t byte_3 = data[3];
 
-    std::uint32_t value = 0u;
+    std::uint32_t unsigned_value = 0u;
 
-    value |= byte_0;
-    value |= byte_1 << 8u;
-    value |= byte_2 << 16u;
-    value |= byte_3 << 24u;
+    unsigned_value |= byte_0;
+    unsigned_value |= byte_1 << 8u;
+    unsigned_value |= byte_2 << 16u;
+    unsigned_value |= byte_3 << 24u;
 
-    return value;
-}
-
-std::int32_t read_i32_little_endian(const std::uint8_t *data)
-{
-    const std::uint32_t value = read_u32_little_endian(data);
-
-    return static_cast<std::int32_t>(value);
+    return static_cast<std::int32_t>(unsigned_value);
 }
 
 }
@@ -44,49 +56,35 @@ parse_status parse_position_response(const std::uint8_t *data, std::size_t lengt
         return parse_status::wrong_length;
     }
 
-    bool return_header_ok = true;
-
-    if (data[0] != 0x40u)
-    {
-        return_header_ok = false;
-    }
-
-    if (data[1] != 0x01u)
-    {
-        return_header_ok = false;
-    }
-
-    if (return_header_ok == false)
+    if (data[return_tlv_type_index] != return_tlv_type)
     {
         return parse_status::missing_return_header;
     }
 
-    if (data[2] != 0x00u)
+    if (data[return_tlv_length_index] != return_tlv_length)
+    {
+        return parse_status::missing_return_header;
+    }
+
+    if (data[return_tlv_error_code_index] != return_error_code_ok)
     {
         return parse_status::request_failed;
     }
 
-    bool position_header_ok = true;
-
-    if (data[3] != 0x41u)
-    {
-        position_header_ok = false;
-    }
-
-    if (data[4] != 0x0du)
-    {
-        position_header_ok = false;
-    }
-
-    if (position_header_ok == false)
+    if (data[position_tlv_type_index] != position_tlv_type)
     {
         return parse_status::missing_position_header;
     }
 
-    response_out.x_mm = read_i32_little_endian(&data[5]);
-    response_out.y_mm = read_i32_little_endian(&data[9]);
-    response_out.z_mm = read_i32_little_endian(&data[13]);
-    response_out.quality_factor = data[17];
+    if (data[position_tlv_length_index] != position_tlv_length)
+    {
+        return parse_status::missing_position_header;
+    }
+
+    response_out.x_mm = read_i32_little_endian(&data[position_x_index]);
+    response_out.y_mm = read_i32_little_endian(&data[position_y_index]);
+    response_out.z_mm = read_i32_little_endian(&data[position_z_index]);
+    response_out.quality_factor = data[position_quality_factor_index];
 
     return parse_status::ok;
 }

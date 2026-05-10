@@ -10,13 +10,13 @@ constexpr std::uint32_t response_timeout_ms = 50u;
 
 constexpr std::uint8_t position_get_command[2] = { 0x02u, 0x00u };
 
-enum class reader_state : std::uint8_t
+enum class link_state : std::uint8_t
 {
     idle = 0u,
     waiting_for_response
 };
 
-reader_state g_state = reader_state::idle;
+link_state g_state = link_state::idle;
 
 std::uint8_t g_response_buffer[dwm1001_position_link::position_frame_size] = {};
 std::size_t g_response_length = 0u;
@@ -57,7 +57,7 @@ void reset_active_request(std::uint32_t now_ms)
     g_active_request_id = 0u;
     g_last_request_finish_time_ms = now_ms;
     g_has_finished_request_once = true;
-    g_state = reader_state::idle;
+    g_state = link_state::idle;
 
     reset_response_buffer();
 }
@@ -107,7 +107,7 @@ bool start_position_request(std::uint32_t now_ms)
 
     g_active_request_id = allocate_request_id();
     g_request_start_time_ms = now_ms;
-    g_state = reader_state::waiting_for_response;
+    g_state = link_state::waiting_for_response;
 
     return true;
 }
@@ -158,7 +158,9 @@ bool tick_idle(std::uint32_t now_ms)
         return false;
     }
 
-    const std::size_t stale_byte_count = esp_uart_api::available_bytes(esp_uart_api::uart_channel::dwm1001);
+    const std::size_t stale_byte_count = esp_uart_api::available_bytes(
+        esp_uart_api::uart_channel::dwm1001
+    );
 
     if (stale_byte_count > 0u)
     {
@@ -198,7 +200,7 @@ namespace dwm1001_position_link
 
 void init()
 {
-    g_state = reader_state::idle;
+    g_state = link_state::idle;
     g_next_request_id = 1u;
     g_active_request_id = 0u;
     g_request_start_time_ms = 0u;
@@ -210,12 +212,12 @@ void init()
 
 bool tick(std::uint32_t now_ms, position_frame &frame_out)
 {
-    if (g_state == reader_state::idle)
+    if (g_state == link_state::idle)
     {
         return tick_idle(now_ms);
     }
 
-    if (g_state == reader_state::waiting_for_response)
+    if (g_state == link_state::waiting_for_response)
     {
         return tick_waiting_for_response(now_ms, frame_out);
     }

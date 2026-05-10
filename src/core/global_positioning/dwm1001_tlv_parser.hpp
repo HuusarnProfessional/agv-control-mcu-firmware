@@ -26,6 +26,10 @@ struct position_response
     std::uint8_t quality_factor;
 };
 
-parse_status parse_position_response(const std::uint8_t *data, std::size_t length, position_response &response_out);
+parse_status parse_position_response(
+    const std::uint8_t *data,
+    std::size_t length,
+    position_response &response_out
+);
 
 }
