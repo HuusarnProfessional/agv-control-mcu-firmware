@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace uwb_position_history
+namespace global_position_history
 {
     constexpr std::uint8_t history_size = 8U;
 

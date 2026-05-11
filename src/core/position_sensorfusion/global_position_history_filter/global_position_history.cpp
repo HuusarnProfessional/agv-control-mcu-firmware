@@ -1,9 +1,9 @@
-#include "uwb_position_history.hpp"
+#include "global_position_history.hpp"
 
 #include <cmath>
 #include <cstdint>
 
-namespace uwb_position_history
+namespace global_position_history
 {
     void clear(history_state &state)
     {

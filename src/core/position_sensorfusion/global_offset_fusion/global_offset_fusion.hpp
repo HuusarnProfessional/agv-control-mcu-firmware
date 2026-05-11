@@ -3,7 +3,7 @@
 #include <cstdint>
 
 #include "../local_position_alignment_to_global/local_position_alignment_to_global.hpp"
-#include "../uwb_position_history_filter/uwb_position_history_filter.hpp"
+#include "../global_position_history_filter/global_position_history_filter.hpp"
 
 namespace global_offset_fusion
 {
@@ -27,7 +27,7 @@ namespace global_offset_fusion
 
     void init();
 
-    output_snapshot update(const local_position_alignment_to_global::output_snapshot &local_position, const uwb_position_history_filter::output_snapshot &global_position);
+    output_snapshot update(const local_position_alignment_to_global::output_snapshot &local_position, const global_position_history_filter::output_snapshot &global_position);
 
     output_snapshot read_output();
 }

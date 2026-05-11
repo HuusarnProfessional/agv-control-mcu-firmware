@@ -1,15 +1,15 @@
-#include "uwb_position_history_filter.hpp"
+#include "global_position_history_filter.hpp"
 
-#include "uwb_position_history.hpp"
-#include "uwb_position_history_gates.hpp"
+#include "global_position_history.hpp"
+#include "global_position_history_gates.hpp"
 
 namespace
 {
     constexpr std::uint16_t full_confidence = 1000U;
     constexpr std::uint16_t minimum_confidence_to_store_in_history = 500U;
 
-    uwb_position_history::history_state history = {};
-    uwb_position_history_filter::output_snapshot latest_output = {};
+    global_position_history::history_state history = {};
+    global_position_history_filter::output_snapshot latest_output = {};
     bool has_last_sample_id = false;
     std::uint32_t last_sample_id = 0U;
 
@@ -36,9 +36,9 @@ namespace
         return true;
     }
 
-    uwb_position_history::sample convert_sample(const global_position_heading::output_snapshot &global_position)
+    global_position_history::sample convert_sample(const global_position_heading::output_snapshot &global_position)
     {
-        uwb_position_history::sample sample = {};
+        global_position_history::sample sample = {};
 
         sample.valid = true;
         sample.sample_id = global_position.sample_id;
@@ -51,9 +51,9 @@ namespace
         return sample;
     }
 
-    uwb_position_history_filter::output_snapshot build_rejected_output(const global_position_heading::output_snapshot &global_position, std::uint16_t history_confidence)
+    global_position_history_filter::output_snapshot build_rejected_output(const global_position_heading::output_snapshot &global_position, std::uint16_t history_confidence)
     {
-        uwb_position_history_filter::output_snapshot output = {};
+        global_position_history_filter::output_snapshot output = {};
 
         output.has_position = false;
         output.original_confidence_position = global_position.confidence_position;
@@ -66,9 +66,9 @@ namespace
         return output;
     }
 
-    uwb_position_history_filter::output_snapshot build_accepted_output(const global_position_heading::output_snapshot &global_position, std::uint16_t history_confidence)
+    global_position_history_filter::output_snapshot build_accepted_output(const global_position_heading::output_snapshot &global_position, std::uint16_t history_confidence)
     {
-        uwb_position_history_filter::output_snapshot output = {};
+        global_position_history_filter::output_snapshot output = {};
 
         output.has_position = true;
         output.x_um = global_position.x_um;
@@ -88,22 +88,22 @@ namespace
         return output;
     }
 
-    std::uint16_t calculate_history_confidence(const uwb_position_history::sample &new_sample)
+    std::uint16_t calculate_history_confidence(const global_position_history::sample &new_sample)
     {
-        const std::uint16_t physical_confidence = uwb_position_history_gates::physical_jump_confidence(history, new_sample);
-        const std::uint16_t prediction_confidence = uwb_position_history_gates::prediction_confidence(history, new_sample);
-        const std::uint16_t hampel_confidence = uwb_position_history_gates::hampel_speed_confidence(history, new_sample);
-        const std::uint16_t history_confidence = uwb_position_history_gates::combine_gate_confidence(physical_confidence, prediction_confidence, hampel_confidence);
+        const std::uint16_t physical_confidence = global_position_history_gates::physical_jump_confidence(history, new_sample);
+        const std::uint16_t prediction_confidence = global_position_history_gates::prediction_confidence(history, new_sample);
+        const std::uint16_t hampel_confidence = global_position_history_gates::hampel_speed_confidence(history, new_sample);
+        const std::uint16_t history_confidence = global_position_history_gates::combine_gate_confidence(physical_confidence, prediction_confidence, hampel_confidence);
 
         return history_confidence;
     }
 }
 
-namespace uwb_position_history_filter
+namespace global_position_history_filter
 {
     void init()
     {
-        uwb_position_history::clear(history);
+        global_position_history::clear(history);
         latest_output = {};
         has_last_sample_id = false;
         last_sample_id = 0U;
@@ -123,7 +123,7 @@ namespace uwb_position_history_filter
             return latest_output;
         }
 
-        const uwb_position_history::sample new_sample = convert_sample(global_position);
+        const global_position_history::sample new_sample = convert_sample(global_position);
         const std::uint16_t history_confidence = calculate_history_confidence(new_sample);
 
         last_sample_id = global_position.sample_id;
@@ -140,7 +140,7 @@ namespace uwb_position_history_filter
 
         if (history_confidence >= minimum_confidence_to_store_in_history)
         {
-            uwb_position_history::push(history, new_sample);
+            global_position_history::push(history, new_sample);
         }
 
         return latest_output;

@@ -4,7 +4,7 @@
 
 #include "../global_position_heading/global_position_heading.hpp"
 
-namespace uwb_position_history_filter
+namespace global_position_history_filter
 {
     struct output_snapshot
     {

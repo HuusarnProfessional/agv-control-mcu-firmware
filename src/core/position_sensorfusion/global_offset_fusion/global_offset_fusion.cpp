@@ -93,7 +93,7 @@ namespace
         return static_cast<std::int32_t>(step_urad);
     }
 
-    bool global_position_should_update_offset(const uwb_position_history_filter::output_snapshot &global_position)
+    bool global_position_should_update_offset(const global_position_history_filter::output_snapshot &global_position)
     {
         if (global_position.has_position == false)
         {
@@ -113,7 +113,7 @@ namespace
         return true;
     }
 
-    void update_position_offset(const local_position_alignment_to_global::output_snapshot &local_position, const uwb_position_history_filter::output_snapshot &global_position)
+    void update_position_offset(const local_position_alignment_to_global::output_snapshot &local_position, const global_position_history_filter::output_snapshot &global_position)
     {
         const std::int64_t measured_offset_x_um = global_position.x_um - local_position.x_um;
         const std::int64_t measured_offset_y_um = global_position.y_um - local_position.y_um;
@@ -136,7 +136,7 @@ namespace
         current_offset.global_sample_id = global_position.sample_id;
     }
 
-    void update_heading_offset(const local_position_alignment_to_global::output_snapshot &local_position, const uwb_position_history_filter::output_snapshot &global_position)
+    void update_heading_offset(const local_position_alignment_to_global::output_snapshot &local_position, const global_position_history_filter::output_snapshot &global_position)
     {
         if (global_position.has_heading == false)
         {
@@ -158,7 +158,7 @@ namespace
         current_offset.confidence_heading = larger_confidence(current_offset.confidence_heading, global_position.confidence_heading);
     }
 
-    void update_offset_from_global(const local_position_alignment_to_global::output_snapshot &local_position, const uwb_position_history_filter::output_snapshot &global_position)
+    void update_offset_from_global(const local_position_alignment_to_global::output_snapshot &local_position, const global_position_history_filter::output_snapshot &global_position)
     {
         if (local_position.has_pose == false)
         {
@@ -210,7 +210,7 @@ namespace
         return output;
     }
 
-    global_offset_fusion::output_snapshot build_from_global(const uwb_position_history_filter::output_snapshot &global_position)
+    global_offset_fusion::output_snapshot build_from_global(const global_position_history_filter::output_snapshot &global_position)
     {
         global_offset_fusion::output_snapshot output = {};
 
@@ -242,7 +242,7 @@ namespace global_offset_fusion
         latest_output = {};
     }
 
-    output_snapshot update(const local_position_alignment_to_global::output_snapshot &local_position, const uwb_position_history_filter::output_snapshot &global_position)
+    output_snapshot update(const local_position_alignment_to_global::output_snapshot &local_position, const global_position_history_filter::output_snapshot &global_position)
     {
         if (local_position.has_pose == true)
         {

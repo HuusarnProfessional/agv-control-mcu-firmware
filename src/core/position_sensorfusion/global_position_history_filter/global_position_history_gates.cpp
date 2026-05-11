@@ -1,4 +1,4 @@
-#include "uwb_position_history_gates.hpp"
+#include "global_position_history_gates.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -55,16 +55,16 @@ namespace
         return static_cast<std::uint16_t>(confidence);
     }
 
-    std::int64_t calculate_speed_um_per_ms(const uwb_position_history::sample &older_sample, const uwb_position_history::sample &newer_sample)
+    std::int64_t calculate_speed_um_per_ms(const global_position_history::sample &older_sample, const global_position_history::sample &newer_sample)
     {
-        const std::uint32_t time_delta_ms = uwb_position_history::calculate_time_delta_ms(older_sample, newer_sample);
+        const std::uint32_t time_delta_ms = global_position_history::calculate_time_delta_ms(older_sample, newer_sample);
 
         if (time_delta_ms == 0U)
         {
             return 0;
         }
 
-        const std::int64_t distance_um = uwb_position_history::calculate_distance_um(older_sample, newer_sample);
+        const std::int64_t distance_um = global_position_history::calculate_distance_um(older_sample, newer_sample);
         const std::int64_t speed_um_per_ms = distance_um / static_cast<std::int64_t>(time_delta_ms);
 
         return speed_um_per_ms;
@@ -109,7 +109,7 @@ namespace
         return median;
     }
 
-    std::uint8_t collect_history_speeds(const uwb_position_history::history_state &history, std::int64_t *speeds_out, std::uint8_t max_count)
+    std::uint8_t collect_history_speeds(const global_position_history::history_state &history, std::int64_t *speeds_out, std::uint8_t max_count)
     {
         std::uint8_t speed_count = 0U;
 
@@ -125,8 +125,8 @@ namespace
                 return speed_count;
             }
 
-            const uwb_position_history::sample newer_sample = history.samples[index];
-            const uwb_position_history::sample older_sample = history.samples[index + 1U];
+            const global_position_history::sample newer_sample = history.samples[index];
+            const global_position_history::sample older_sample = history.samples[index + 1U];
 
             if (newer_sample.valid == false)
             {
@@ -146,24 +146,24 @@ namespace
     }
 }
 
-namespace uwb_position_history_gates
+namespace global_position_history_gates
 {
-    std::uint16_t physical_jump_confidence(const uwb_position_history::history_state &history, const uwb_position_history::sample &new_sample)
+    std::uint16_t physical_jump_confidence(const global_position_history::history_state &history, const global_position_history::sample &new_sample)
     {
-        if (uwb_position_history::has_last_sample(history) == false)
+        if (global_position_history::has_last_sample(history) == false)
         {
             return full_confidence;
         }
 
-        const uwb_position_history::sample last_sample = uwb_position_history::get_last_sample(history);
-        const std::uint32_t time_delta_ms = uwb_position_history::calculate_time_delta_ms(last_sample, new_sample);
+        const global_position_history::sample last_sample = global_position_history::get_last_sample(history);
+        const std::uint32_t time_delta_ms = global_position_history::calculate_time_delta_ms(last_sample, new_sample);
 
         if (time_delta_ms == 0U)
         {
             return 0U;
         }
 
-        const std::int64_t distance_um = uwb_position_history::calculate_distance_um(last_sample, new_sample);
+        const std::int64_t distance_um = global_position_history::calculate_distance_um(last_sample, new_sample);
         const std::int64_t allowed_distance_um = (max_robot_speed_um_per_ms * static_cast<std::int64_t>(time_delta_ms)) + physical_jump_margin_um;
 
         if (distance_um <= allowed_distance_um)
@@ -176,18 +176,18 @@ namespace uwb_position_history_gates
         return residual_to_confidence(distance_um, allowed_distance_um, zero_confidence_distance_um);
     }
 
-    std::uint16_t prediction_confidence(const uwb_position_history::history_state &history, const uwb_position_history::sample &new_sample)
+    std::uint16_t prediction_confidence(const global_position_history::history_state &history, const global_position_history::sample &new_sample)
     {
-        if (uwb_position_history::has_two_samples(history) == false)
+        if (global_position_history::has_two_samples(history) == false)
         {
             return full_confidence;
         }
 
-        const uwb_position_history::sample last_sample = uwb_position_history::get_last_sample(history);
-        const uwb_position_history::sample previous_sample = uwb_position_history::get_previous_sample(history);
+        const global_position_history::sample last_sample = global_position_history::get_last_sample(history);
+        const global_position_history::sample previous_sample = global_position_history::get_previous_sample(history);
 
-        const std::uint32_t previous_time_delta_ms = uwb_position_history::calculate_time_delta_ms(previous_sample, last_sample);
-        const std::uint32_t new_time_delta_ms = uwb_position_history::calculate_time_delta_ms(last_sample, new_sample);
+        const std::uint32_t previous_time_delta_ms = global_position_history::calculate_time_delta_ms(previous_sample, last_sample);
+        const std::uint32_t new_time_delta_ms = global_position_history::calculate_time_delta_ms(last_sample, new_sample);
 
         if (previous_time_delta_ms == 0U)
         {
@@ -216,21 +216,21 @@ namespace uwb_position_history_gates
         return residual_to_confidence(residual_um, prediction_good_residual_um, prediction_zero_residual_um);
     }
 
-    std::uint16_t hampel_speed_confidence(const uwb_position_history::history_state &history, const uwb_position_history::sample &new_sample)
+    std::uint16_t hampel_speed_confidence(const global_position_history::history_state &history, const global_position_history::sample &new_sample)
     {
-        std::int64_t speeds[uwb_position_history::history_size] = {};
-        std::uint8_t speed_count = collect_history_speeds(history, speeds, uwb_position_history::history_size);
+        std::int64_t speeds[global_position_history::history_size] = {};
+        std::uint8_t speed_count = collect_history_speeds(history, speeds, global_position_history::history_size);
 
         if (speed_count < minimum_speeds_for_hampel)
         {
             return full_confidence;
         }
 
-        const uwb_position_history::sample last_sample = uwb_position_history::get_last_sample(history);
+        const global_position_history::sample last_sample = global_position_history::get_last_sample(history);
         const std::int64_t new_speed = calculate_speed_um_per_ms(last_sample, new_sample);
         const std::int64_t median_speed = median_value(speeds, speed_count);
 
-        std::int64_t deviations[uwb_position_history::history_size] = {};
+        std::int64_t deviations[global_position_history::history_size] = {};
 
         for (std::uint8_t index = 0U; index < speed_count; index++)
         {

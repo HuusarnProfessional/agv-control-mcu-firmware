@@ -2,9 +2,9 @@
 
 #include "global_offset_fusion/global_offset_fusion.hpp"
 #include "global_position_heading/global_position_heading.hpp"
+#include "global_position_history_filter/global_position_history_filter.hpp"
 #include "local_position_alignment_to_global/local_position_alignment_to_global.hpp"
 #include "position_sensorfusion.hpp"
-#include "uwb_position_history_filter/uwb_position_history_filter.hpp"
 
 #include "../global_positioning/global_position_api.hpp"
 #include "../motion_mcu_communication/state/incoming/incoming_state.hpp"
@@ -46,7 +46,7 @@ namespace position_sensorfusion_pipeline
     void init()
     {
         global_position_heading::init();
-        uwb_position_history_filter::init();
+        global_position_history_filter::init();
         local_position_alignment_to_global::init();
         global_offset_fusion::init();
         position_sensorfusion::set_output({});
@@ -56,7 +56,7 @@ namespace position_sensorfusion_pipeline
     {
         const motion_mcu_incoming_state::local_position_state local_position = motion_mcu_incoming_state::get_local_position();
         const global_position_heading::output_snapshot global_position = update_global_position_heading();
-        const uwb_position_history_filter::output_snapshot filtered_global_position = uwb_position_history_filter::update(global_position);
+        const global_position_history_filter::output_snapshot filtered_global_position = global_position_history_filter::update(global_position);
         const local_position_alignment_to_global::output_snapshot aligned_local_position = local_position_alignment_to_global::update(local_position, global_position, now_ms);
         const global_offset_fusion::output_snapshot offset_output = global_offset_fusion::update(aligned_local_position, filtered_global_position);
         const position_sensorfusion::output_snapshot output = convert_output(offset_output);
