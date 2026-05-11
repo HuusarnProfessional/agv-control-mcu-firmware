@@ -9,7 +9,6 @@ Completed work is intentionally omitted.
 These handlers parse their arguments today, but still end in `return false;` and do not perform real work.
 
 - [ ] `incoming_request_handlers::handle_reset()`
-- [ ] `incoming_request_handlers::handle_get_position_global()`
 - [ ] `incoming_request_handlers::handle_get_armed()`
 
 ## mission execution is still structurally incomplete
@@ -17,15 +16,10 @@ These handlers parse their arguments today, but still end in `return false;` and
 - [ ] decide how `set_drive_rotate_deg(...)` should interact with path-following between mission parts
 - [ ] decide whether the current Java mission segmentation is acceptable for path-following
 
-## control pipelines that are still empty
-
-- [ ] implement `src/core/global_positioning/global_positioning_pipeline.cpp`
-
 ## bluetooth state and control backends still missing
 
 - [ ] define real armed-state ownership on ESP
 - [ ] define real speed-state ownership on ESP
-- [ ] define real global-position ownership on ESP
 - [ ] implement real reset behavior for `reset()`
 
 ## motion mcu integration still missing at the upper layer
