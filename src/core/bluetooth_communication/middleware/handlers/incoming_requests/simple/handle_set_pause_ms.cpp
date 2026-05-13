@@ -1,6 +1,5 @@
 #include "../incoming_request_handler_declarations.hpp"
 
-#include <cstddef>
 #include <cstdio>
 
 #include "../../../middleware_parse_helpers.hpp"
@@ -27,16 +26,7 @@ namespace incoming_request_handlers
         }
 
         char response[48] = {};
-        const int formatted_length = std::snprintf(
-            response,
-            sizeof(response),
-            "rsp:paused(%lu)",
-            static_cast<unsigned long>(duration_ms));
-
-        if ((formatted_length <= 0) || (static_cast<std::size_t>(formatted_length) >= sizeof(response)))
-        {
-            return false;
-        }
+        std::snprintf(response, sizeof(response), "rsp:paused(%lu)", static_cast<unsigned long>(duration_ms));
 
         return handler_helpers::write_response_text(response);
     }
