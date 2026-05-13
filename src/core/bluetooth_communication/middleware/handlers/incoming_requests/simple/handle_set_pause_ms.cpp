@@ -1,7 +1,11 @@
 #include "../incoming_request_handler_declarations.hpp"
 
+#include <cstddef>
+#include <cstdio>
+
 #include "../../../middleware_parse_helpers.hpp"
 #include "../../../../../control/primitives/pause/pause_pipeline.hpp"
+#include "../../handler_helpers.hpp"
 
 namespace incoming_request_handlers
 {
@@ -15,6 +19,25 @@ namespace incoming_request_handlers
             return false;
         }
 
-        return pause_pipeline::request_pause(duration_ms);
+        const bool pause_requested = pause_pipeline::request_pause(duration_ms);
+
+        if (pause_requested == false)
+        {
+            return false;
+        }
+
+        char response[48] = {};
+        const int formatted_length = std::snprintf(
+            response,
+            sizeof(response),
+            "rsp:paused(%lu)",
+            static_cast<unsigned long>(duration_ms));
+
+        if ((formatted_length <= 0) || (static_cast<std::size_t>(formatted_length) >= sizeof(response)))
+        {
+            return false;
+        }
+
+        return handler_helpers::write_response_text(response);
     }
 }
