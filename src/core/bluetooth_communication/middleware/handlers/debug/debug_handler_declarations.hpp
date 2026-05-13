@@ -27,6 +27,7 @@ namespace debug_handlers
     bool handle_get_motion_primitive_status();
     bool handle_get_pure_pursuit_debug();
     bool handle_get_local_position_model_debug();
+    bool handle_get_global_position_history_filter_debug();
     bool handle_get_voltage_debug();
     bool handle_debug_command();
 }

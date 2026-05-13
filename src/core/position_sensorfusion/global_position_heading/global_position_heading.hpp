@@ -25,4 +25,6 @@ namespace global_position_heading
     void init();
 
     output_snapshot update(const global_position_api::global_position_sample &sample);
+
+    output_snapshot read_output();
 }

@@ -8,9 +8,20 @@
 
 #include "../global_positioning/global_position_api.hpp"
 #include "../motion_mcu_communication/state/incoming/incoming_state.hpp"
+#include "../motion_mcu_communication/outgoing_payloads/service/position_correction_payload.hpp"
 
 namespace
 {
+    void send_branch_request_if_needed(const local_position_alignment_to_global::output_snapshot &aligned_local_position)
+    {
+        if (aligned_local_position.request.has_request == false)
+        {
+            return;
+        }
+
+        (void)position_correction_payload::send(aligned_local_position.request.pose_id, aligned_local_position.request.branch_id);
+    }
+
     position_sensorfusion::output_snapshot convert_output(const global_offset_fusion::output_snapshot &offset_output)
     {
         position_sensorfusion::output_snapshot output = {};
@@ -58,6 +69,9 @@ namespace position_sensorfusion_pipeline
         const global_position_heading::output_snapshot global_position = update_global_position_heading();
         const global_position_history_filter::output_snapshot filtered_global_position = global_position_history_filter::update(global_position);
         const local_position_alignment_to_global::output_snapshot aligned_local_position = local_position_alignment_to_global::update(local_position, global_position, now_ms);
+
+        send_branch_request_if_needed(aligned_local_position);
+
         const global_offset_fusion::output_snapshot offset_output = global_offset_fusion::update(aligned_local_position, filtered_global_position);
         const position_sensorfusion::output_snapshot output = convert_output(offset_output);
 

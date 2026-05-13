@@ -79,7 +79,12 @@ namespace
         output.confidence_position = multiply_confidence(global_position.confidence_position, history_confidence);
         output.has_heading = global_position.has_heading;
         output.heading_urad = global_position.heading_urad;
-        output.confidence_heading = global_position.confidence_heading;
+
+        if (global_position.has_heading == true)
+        {
+            output.confidence_heading = multiply_confidence(global_position.confidence_heading, history_confidence);
+        }
+
         output.is_new_sample = true;
         output.rejected = false;
         output.sample_id = global_position.sample_id;

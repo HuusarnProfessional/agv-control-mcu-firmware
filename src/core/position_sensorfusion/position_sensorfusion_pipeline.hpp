@@ -2,26 +2,9 @@
 
 #include <cstdint>
 
-namespace position_sensorfusion
+namespace position_sensorfusion_pipeline
 {
-    struct output_snapshot
-    {
-        bool has_pose = false;
-
-        std::int64_t x_um = 0;
-        std::int64_t y_um = 0;
-        std::int32_t heading_urad = 0;
-
-        std::uint16_t confidence_position = 0U;
-        std::uint16_t confidence_heading = 0U;
-
-        std::uint8_t pose_id = 0U;
-        std::uint8_t branch_id = 0U;
-    };
-
     void init();
 
-    void set_output(const output_snapshot &output);
-
-    output_snapshot read_output();
+    void tick(std::uint32_t now_ms);
 }

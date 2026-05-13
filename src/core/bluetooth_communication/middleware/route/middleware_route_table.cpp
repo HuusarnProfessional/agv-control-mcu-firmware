@@ -17,6 +17,7 @@ namespace
         {"reset()", incoming_request_handlers::handle_reset},
         {"get_speed()", incoming_request_handlers::handle_get_speed},
         {"get_position_local()", incoming_request_handlers::handle_get_position_local},
+        {"get_position_sensorfusion()", incoming_request_handlers::handle_get_position_sensorfusion},
         {"get_position_global()", incoming_request_handlers::handle_get_position_global},
         {"set_position_local_reset()", incoming_request_handlers::handle_set_position_local_reset},
         {"set_armed(bool:is_armed)", incoming_request_handlers::handle_set_armed},
@@ -88,6 +89,7 @@ namespace
         {"get_motion_primitive_status()", debug_handlers::handle_get_motion_primitive_status},
         {"get_pure_pursuit_debug()", debug_handlers::handle_get_pure_pursuit_debug},
         {"get_local_position_model_debug()", debug_handlers::handle_get_local_position_model_debug},
+        {"get_global_position_history_filter_debug()", debug_handlers::handle_get_global_position_history_filter_debug},
         {"get_voltage_debug()", debug_handlers::handle_get_voltage_debug}
     };
 

@@ -6,6 +6,7 @@ namespace incoming_request_handlers
     bool handle_reset();
     bool handle_get_speed();
     bool handle_get_position_local();
+    bool handle_get_position_sensorfusion();
     bool handle_get_position_global();
     bool handle_set_position_local_reset();
     bool handle_set_armed();
