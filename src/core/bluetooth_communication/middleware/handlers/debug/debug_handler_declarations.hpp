@@ -29,5 +29,6 @@ namespace debug_handlers
     bool handle_get_local_position_model_debug();
     bool handle_get_global_position_history_filter_debug();
     bool handle_get_voltage_debug();
+    bool handle_run_position_capture_test();
     bool handle_debug_command();
 }

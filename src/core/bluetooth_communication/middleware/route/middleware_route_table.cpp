@@ -90,7 +90,8 @@ namespace
         {"get_pure_pursuit_debug()", debug_handlers::handle_get_pure_pursuit_debug},
         {"get_local_position_model_debug()", debug_handlers::handle_get_local_position_model_debug},
         {"get_global_position_history_filter_debug()", debug_handlers::handle_get_global_position_history_filter_debug},
-        {"get_voltage_debug()", debug_handlers::handle_get_voltage_debug}
+        {"get_voltage_debug()", debug_handlers::handle_get_voltage_debug},
+        {"run_position_capture_test()", debug_handlers::handle_run_position_capture_test}
     };
 
     const middleware_route_types::middleware_route_table g_empty_route_table =

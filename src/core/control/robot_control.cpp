@@ -10,6 +10,7 @@
 #include "../mission/mission_pipeline.hpp"
 #include "../pure_pursuit/pure_pursuit_pipeline.hpp"
 #include "../bluetooth_communication/bluetooth_communication_pipeline.hpp"
+#include "../bluetooth_communication/debug_capture/position_capture_test_pipeline.hpp"
 
 namespace robot_control
 {
@@ -24,6 +25,7 @@ namespace robot_control
         pause_pipeline::init();
         mission_pipeline::init();
         pure_pursuit_pipeline::init();
+        position_capture_test_pipeline::init();
         bluetooth_communication_pipeline::init();
     }
 
@@ -37,6 +39,7 @@ namespace robot_control
         motion_primitive_status_monitor::tick(now_ms);
         mission_pipeline::tick(now_ms);
         pure_pursuit_pipeline::tick(now_ms);
+        position_capture_test_pipeline::tick(now_ms);
         bluetooth_communication_pipeline::tick(now_ms);
     }
 }
