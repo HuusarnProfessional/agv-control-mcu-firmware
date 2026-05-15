@@ -31,6 +31,8 @@ namespace debug_handlers
             debug_handler_helpers::append_format(response, sizeof(response), offset, " timed_out %u", state.timed_out ? 1U : 0U) &&
             debug_handler_helpers::append_format(response, sizeof(response), offset, " expected_primitive_id %u", static_cast<unsigned>(state.expected_primitive)) &&
             debug_handler_helpers::append_format(response, sizeof(response), offset, " send_time_ms %lu", static_cast<unsigned long>(state.send_time_ms)) &&
+            debug_handler_helpers::append_format(response, sizeof(response), offset, " start_seen_time_ms %lu", static_cast<unsigned long>(state.start_seen_time_ms)) &&
+            debug_handler_helpers::append_format(response, sizeof(response), offset, " last_matching_status_time_ms %lu", static_cast<unsigned long>(state.last_matching_status_time_ms)) &&
             debug_handler_helpers::append_format(response, sizeof(response), offset, " baseline_command_id %lu", static_cast<unsigned long>(state.baseline_command_id)) &&
             debug_handler_helpers::append_format(response, sizeof(response), offset, " tracked_command_id %lu", static_cast<unsigned long>(state.tracked_command_id)) &&
             debug_handler_helpers::append_format(response, sizeof(response), offset, " stm_valid %u", state.stm.valid ? 1U : 0U) &&

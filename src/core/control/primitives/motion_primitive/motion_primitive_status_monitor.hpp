@@ -23,6 +23,8 @@ namespace motion_primitive_status_monitor
         bool timed_out = false;
         expected_primitive_id expected_primitive = expected_primitive_id::none;
         std::uint32_t send_time_ms = 0U;
+        std::uint32_t start_seen_time_ms = 0U;
+        std::uint32_t last_matching_status_time_ms = 0U;
         std::uint32_t baseline_command_id = 0U;
         std::uint32_t tracked_command_id = 0U;
         motion_mcu_incoming_state::motion_primitive_status_state stm = {};

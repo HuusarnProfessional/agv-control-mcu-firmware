@@ -25,6 +25,7 @@ namespace debug_handlers
     bool handle_get_imu_has_calibration();
     bool handle_get_motion_debug();
     bool handle_get_motion_primitive_status();
+    bool handle_get_mission_runner_debug();
     bool handle_get_pure_pursuit_debug();
     bool handle_get_local_position_model_debug();
     bool handle_get_filtered_global_position_debug();
@@ -33,7 +34,9 @@ namespace debug_handlers
     bool handle_get_filtered_global_offset_fusion_debug();
     bool handle_set_position_sensorfusion_bypass();
     bool handle_set_position_sensorfusion_local_only();
+    bool handle_set_position_sensorfusion_global_anchor_test();
     bool handle_get_voltage_debug();
+    bool handle_run_mission_part_test();
     bool handle_run_position_capture_test();
     bool handle_debug_command();
 }

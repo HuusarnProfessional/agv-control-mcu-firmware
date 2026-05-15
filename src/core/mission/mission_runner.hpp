@@ -14,6 +14,19 @@ namespace mission_runner
         not_running
     };
 
+    struct snapshot
+    {
+        bool is_running = false;
+        bool start_pending = false;
+        bool branch_changed = false;
+        bool started_this_tick = false;
+        std::uint16_t current_part = 0U;
+        std::uint16_t part_count = 0U;
+        std::uint8_t pending_branch_id = 0U;
+        std::uint32_t pending_start_time_ms = 0U;
+        std::uint32_t branch_changed_time_ms = 0U;
+    };
+
     void init();
 
     void tick(std::uint32_t now_ms);
@@ -25,6 +38,8 @@ namespace mission_runner
     runner_status abort_mission();
 
     bool is_running();
+
+    snapshot read_snapshot();
 
     bool get_current_part(std::uint16_t &part_number_out);
 

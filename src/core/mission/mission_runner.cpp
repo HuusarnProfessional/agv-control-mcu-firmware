@@ -128,7 +128,7 @@ namespace mission_runner
             return runner_status::mission_not_ready;
         }
 
-        if (position_sensorfusion_pipeline::is_local_only_mode_enabled() == true)
+        if ((position_sensorfusion_pipeline::is_local_only_mode_enabled() == true) || (position_sensorfusion_pipeline::is_global_anchor_test_mode_enabled() == true))
         {
             begin_running();
             return runner_status::ok;
@@ -167,6 +167,23 @@ namespace mission_runner
     bool is_running()
     {
         return g_is_running;
+    }
+
+    snapshot read_snapshot()
+    {
+        snapshot state = {};
+
+        state.is_running = g_is_running;
+        state.start_pending = g_start_pending;
+        state.branch_changed = g_branch_changed;
+        state.started_this_tick = g_started_this_tick;
+        state.current_part = g_current_part;
+        state.part_count = mission_buffer::part_count();
+        state.pending_branch_id = g_pending_branch_id;
+        state.pending_start_time_ms = g_pending_start_time_ms;
+        state.branch_changed_time_ms = g_branch_changed_time_ms;
+
+        return state;
     }
 
     bool get_current_part(std::uint16_t &part_number_out)

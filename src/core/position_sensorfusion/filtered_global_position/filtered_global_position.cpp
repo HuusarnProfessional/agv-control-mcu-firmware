@@ -8,36 +8,36 @@
 namespace
 {
     constexpr std::uint16_t full_confidence = 1000U;
-    constexpr std::uint16_t minimum_initial_confidence = 300U;
+    constexpr std::uint16_t minimum_initial_confidence = 150U;
     constexpr std::uint16_t minimum_accepted_confidence = 120U;
+    constexpr std::uint16_t minimum_tracking_confidence = 80U;
 
-    constexpr std::uint8_t bootstrap_size = 4U;
+    constexpr std::uint8_t bootstrap_size = 6U;
     constexpr std::uint8_t minimum_bootstrap_sample_count = 3U;
-    constexpr std::int64_t bootstrap_good_spread_um = 150000;
-    constexpr std::int64_t bootstrap_zero_spread_um = 500000;
+    constexpr std::int64_t bootstrap_good_spread_um = 250000;
+    constexpr std::int64_t bootstrap_zero_spread_um = 1000000;
 
-    constexpr std::uint8_t history_size = 16U;
-    constexpr std::uint8_t minimum_heading_sample_count = 3U;
-    constexpr std::uint8_t full_heading_sample_count = 7U;
+    constexpr std::uint8_t history_size = 64U;
+    constexpr std::uint8_t minimum_heading_sample_count = 6U;
+    constexpr std::uint8_t full_heading_sample_count = 12U;
 
     constexpr std::int32_t pi_urad = 3141593;
     constexpr std::int32_t two_pi_urad = 6283185;
 
-    constexpr std::int64_t max_robot_speed_um_per_ms = 1200;
-    constexpr std::int64_t physical_jump_margin_um = 250000;
-    constexpr std::int64_t prediction_good_residual_um = 100000;
-    constexpr std::int64_t prediction_zero_residual_um = 700000;
-    constexpr std::int64_t hampel_speed_margin_um_per_ms = 500;
+    constexpr std::int64_t max_robot_speed_um_per_ms = 1500;
+    constexpr std::int64_t physical_jump_margin_um = 500000;
+    constexpr std::int64_t prediction_good_residual_um = 150000;
+    constexpr std::int64_t prediction_zero_residual_um = 1200000;
+    constexpr std::int64_t hampel_speed_margin_um_per_ms = 700;
     constexpr std::uint8_t minimum_speeds_for_hampel = 3U;
 
-    constexpr std::int64_t position_step_base_um = 50000;
-    constexpr std::int64_t position_step_speed_um_per_ms = 700;
+    constexpr std::int64_t position_step_base_um = 30000;
+    constexpr std::int64_t position_step_speed_um_per_ms = 300;
 
-    constexpr std::int64_t heading_min_distance_um = 200000;
-    constexpr std::int64_t heading_full_distance_um = 800000;
-    constexpr std::int64_t heading_good_line_error_um = 150000;
-    constexpr std::int64_t heading_zero_line_error_um = 700000;
-    constexpr std::uint16_t heading_line_confidence_floor = 350U;
+    constexpr std::int64_t heading_min_distance_um = 500000;
+    constexpr std::int64_t heading_full_distance_um = 1500000;
+    constexpr std::int64_t heading_good_line_error_um = 120000;
+    constexpr std::int64_t heading_zero_line_error_um = 450000;
     constexpr std::uint32_t heading_max_window_age_ms = 6000U;
 
     constexpr std::uint32_t position_confidence_full_age_ms = 250U;
@@ -815,14 +815,9 @@ namespace
         const std::int64_t max_line_error_um = calculate_max_line_error_um(oldest_index);
         const std::uint16_t distance_confidence = growth_to_confidence(heading_distance_um, heading_min_distance_um, heading_full_distance_um);
         const std::uint16_t count_confidence = sample_count_to_confidence(sample_count);
-        std::uint16_t line_confidence = range_to_confidence(max_line_error_um, heading_good_line_error_um, heading_zero_line_error_um);
+        const std::uint16_t line_confidence = range_to_confidence(max_line_error_um, heading_good_line_error_um, heading_zero_line_error_um);
         const std::uint16_t position_confidence = calculate_window_position_confidence(oldest_index);
         std::uint16_t measured_confidence = distance_confidence;
-
-        if (line_confidence < heading_line_confidence_floor)
-        {
-            line_confidence = heading_line_confidence_floor;
-        }
 
         measured_confidence = smaller_confidence(measured_confidence, count_confidence);
         measured_confidence = smaller_confidence(measured_confidence, line_confidence);
@@ -980,12 +975,19 @@ namespace
             return build_output(now_ms, true, true, false, initial_sample, raw_confidence, bootstrap_history_confidence);
         }
 
-        if (filtered_confidence < minimum_accepted_confidence)
+        std::uint16_t tracking_confidence = filtered_confidence;
+
+        if ((tracking_confidence < minimum_tracking_confidence) && (raw_confidence >= minimum_initial_confidence))
+        {
+            tracking_confidence = minimum_tracking_confidence;
+        }
+
+        if (tracking_confidence < minimum_tracking_confidence)
         {
             return reject_sample(now_ms, sample, raw_confidence, history_confidence);
         }
 
-        accept_sample(sample, filtered_confidence);
+        accept_sample(sample, tracking_confidence);
         return build_output(now_ms, true, true, false, sample, raw_confidence, history_confidence);
     }
 }

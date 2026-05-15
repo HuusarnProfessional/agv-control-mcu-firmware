@@ -9,7 +9,7 @@ namespace pure_pursuit_tuning
     constexpr std::int32_t k_mission_turn_only_yaw_rate_mdeg_s = 70000;
     constexpr std::int32_t k_mission_max_yaw_rate_mdeg_s = 70000;
     constexpr double k_mission_heading_p_yaw_rate_mdeg_s_per_deg = 350.0;
-    constexpr double k_mission_lookahead_mm = 280.0;
+    constexpr double k_mission_lookahead_mm = 200.0;
     constexpr double k_mission_goal_tolerance_mm = 120.0;
     constexpr double k_mission_speed_slowdown_heading_error_deg = 20.0;
     constexpr double k_mission_turn_only_heading_error_deg = 60.0;

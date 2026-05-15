@@ -113,7 +113,11 @@ namespace
             return 0U;
         }
 
-        return smaller_confidence(global_position.confidence_position, global_position.confidence_heading);
+        std::uint16_t score = global_position.confidence_position;
+        score = smaller_confidence(score, global_position.confidence_heading);
+        score = smaller_confidence(score, global_position.history_confidence);
+
+        return score;
     }
 
     std::uint16_t calculate_current_reference_score(const global_reference_selector::current_reference_snapshot &current_reference)
@@ -187,6 +191,11 @@ namespace
     {
         global_reference_selector::reference_activation activation = {};
 
+        if (global_position.has_heading == false)
+        {
+            return activation;
+        }
+
         activation.has_activation = true;
         activation.is_initial_reference = true;
         activation.is_mission_seed = false;
@@ -222,6 +231,11 @@ namespace
     global_reference_selector::branch_request start_pending_request(const motion_mcu_incoming_state::local_position_state &local_position, const filtered_global_position::output_snapshot &global_position, std::uint16_t reference_score, std::uint32_t now_ms)
     {
         global_reference_selector::branch_request request = {};
+
+        if (global_position.has_heading == false)
+        {
+            return request;
+        }
 
         pending_reference.pending = true;
         pending_reference.source_pose_id = local_position.pose_id;

@@ -16,6 +16,7 @@ namespace
     bool previous_mission_running = false;
     bool bypass_offset_fusion = false;
     bool local_only_mode = false;
+    bool global_anchor_test_mode = false;
 
     void send_branch_request_if_needed(const global_reference_selector::output_snapshot &reference_decision)
     {
@@ -25,22 +26,6 @@ namespace
         }
 
         (void)position_correction_payload::send(reference_decision.request.pose_id, reference_decision.request.branch_id);
-    }
-
-    position_sensorfusion::output_snapshot convert_output(const filtered_global_offset_fusion::output_snapshot &offset_output)
-    {
-        position_sensorfusion::output_snapshot output = {};
-
-        output.has_pose = offset_output.has_pose;
-        output.x_um = offset_output.x_um;
-        output.y_um = offset_output.y_um;
-        output.heading_urad = offset_output.heading_urad;
-        output.confidence_position = offset_output.confidence_position;
-        output.confidence_heading = offset_output.confidence_heading;
-        output.pose_id = offset_output.pose_id;
-        output.branch_id = offset_output.branch_id;
-
-        return output;
     }
 
     position_sensorfusion::output_snapshot convert_output(const local_to_global_transform::output_snapshot &transformed_local_position)
@@ -107,6 +92,7 @@ namespace position_sensorfusion_pipeline
         previous_mission_running = false;
         bypass_offset_fusion = false;
         local_only_mode = false;
+        global_anchor_test_mode = false;
     }
 
     void set_bypass_offset_fusion(bool enabled)
@@ -123,6 +109,10 @@ namespace position_sensorfusion_pipeline
     void set_local_only_mode(bool enabled)
     {
         local_only_mode = enabled;
+        if (enabled == true)
+        {
+            global_anchor_test_mode = false;
+        }
         global_reference_selector::reset_runtime_state();
         local_to_global_transform::reset_runtime_state();
         filtered_global_offset_fusion::reset_runtime_state();
@@ -132,6 +122,24 @@ namespace position_sensorfusion_pipeline
     bool is_local_only_mode_enabled()
     {
         return local_only_mode;
+    }
+
+    void set_global_anchor_test_mode(bool enabled)
+    {
+        global_anchor_test_mode = enabled;
+        if (enabled == true)
+        {
+            local_only_mode = false;
+        }
+        global_reference_selector::reset_runtime_state();
+        local_to_global_transform::reset_runtime_state();
+        filtered_global_offset_fusion::reset_runtime_state();
+        position_sensorfusion::set_output({});
+    }
+
+    bool is_global_anchor_test_mode_enabled()
+    {
+        return global_anchor_test_mode;
     }
 
     void tick(std::uint32_t now_ms)
@@ -154,13 +162,26 @@ namespace position_sensorfusion_pipeline
         {
             transformed_local_position = local_to_global_transform::read_output(local_position, now_ms);
         }
+        else if (global_anchor_test_mode == true)
+        {
+            if (mission_runner::is_running() == true)
+            {
+                reference_decision = global_reference_selector::update(local_position, strong_global_position, current_reference, now_ms);
+                transformed_local_position = local_to_global_transform::update(local_position, reference_decision.activation, now_ms);
+            }
+            else
+            {
+                transformed_local_position = local_to_global_transform::read_output(local_position, now_ms);
+            }
+        }
         else if (mission_reference_seed::is_pending() == true)
         {
             transformed_local_position = local_to_global_transform::read_output(local_position, now_ms);
         }
         else if (mission_runner::is_running() == true)
         {
-            transformed_local_position = local_to_global_transform::read_output(local_position, now_ms);
+            reference_decision = global_reference_selector::update(local_position, strong_global_position, current_reference, now_ms);
+            transformed_local_position = local_to_global_transform::update(local_position, reference_decision.activation, now_ms);
         }
         else
         {
@@ -175,15 +196,7 @@ namespace position_sensorfusion_pipeline
 
         position_sensorfusion::output_snapshot output = {};
 
-        if ((local_only_mode == true) || (bypass_offset_fusion == true) || (mission_runner::is_running() == true))
-        {
-            output = convert_output(transformed_local_position);
-        }
-        else
-        {
-            const filtered_global_offset_fusion::output_snapshot offset_output = filtered_global_offset_fusion::update(transformed_local_position, strong_global_position);
-            output = convert_output(offset_output);
-        }
+        output = convert_output(transformed_local_position);
 
         position_sensorfusion::set_output(output);
     }

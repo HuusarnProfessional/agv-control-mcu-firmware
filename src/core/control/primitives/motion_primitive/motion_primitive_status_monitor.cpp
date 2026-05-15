@@ -2,12 +2,30 @@
 
 namespace
 {
-    constexpr std::uint32_t start_timeout_ms = 1000U;
-    constexpr std::uint32_t status_freshness_timeout_ms = 300U;
+    constexpr std::uint32_t start_seen_timeout_ms = 3000U;
+    constexpr std::uint32_t running_status_timeout_ms = 5000U;
     constexpr std::uint8_t execution_state_complete = 3U;
     constexpr std::uint8_t error_code_none = 0U;
 
     motion_primitive_status_monitor::snapshot g_snapshot = {};
+
+    bool has_matching_status()
+    {
+        return
+            (g_snapshot.stm.valid == true) &&
+            (g_snapshot.stm.command_id != 0U) &&
+            (g_snapshot.stm.command_id == g_snapshot.tracked_command_id) &&
+            (g_snapshot.stm.active_primitive_id == static_cast<std::uint8_t>(g_snapshot.expected_primitive));
+    }
+
+    bool has_matching_start()
+    {
+        return
+            (g_snapshot.stm.valid == true) &&
+            (g_snapshot.stm.command_id != 0U) &&
+            (g_snapshot.stm.command_id != g_snapshot.baseline_command_id) &&
+            (g_snapshot.stm.active_primitive_id == static_cast<std::uint8_t>(g_snapshot.expected_primitive));
+    }
 
     void begin_wait(motion_primitive_status_monitor::expected_primitive_id expected_primitive, std::uint32_t now_ms)
     {
@@ -52,15 +70,11 @@ namespace motion_primitive_status_monitor
 
         if (g_snapshot.tracked_command_id == 0U)
         {
-            const bool has_matching_start =
-                (g_snapshot.stm.valid == true) &&
-                (g_snapshot.stm.command_id != 0U) &&
-                (g_snapshot.stm.command_id != g_snapshot.baseline_command_id) &&
-                (g_snapshot.stm.active_primitive_id == static_cast<std::uint8_t>(g_snapshot.expected_primitive));
-
-            if (has_matching_start == true)
+            if (has_matching_start() == true)
             {
                 g_snapshot.tracked_command_id = g_snapshot.stm.command_id;
+                g_snapshot.start_seen_time_ms = now_ms;
+                g_snapshot.last_matching_status_time_ms = now_ms;
 
                 if (g_snapshot.stm.state == execution_state_complete)
                 {
@@ -74,7 +88,7 @@ namespace motion_primitive_status_monitor
                 return;
             }
 
-            if ((now_ms - g_snapshot.send_time_ms) >= start_timeout_ms)
+            if ((now_ms - g_snapshot.send_time_ms) >= start_seen_timeout_ms)
             {
                 finish_wait(false, true);
             }
@@ -82,27 +96,25 @@ namespace motion_primitive_status_monitor
             return;
         }
 
-        if ((g_snapshot.stm.valid == false) ||
-            (g_snapshot.stm.command_id != g_snapshot.tracked_command_id))
+        if (has_matching_status() == true)
         {
-            if ((now_ms - g_snapshot.send_time_ms) >= start_timeout_ms)
+            g_snapshot.last_matching_status_time_ms = now_ms;
+
+            if (g_snapshot.stm.state == execution_state_complete)
             {
-                finish_wait(false, true);
+                const bool success = g_snapshot.stm.failure_code == error_code_none;
+                finish_wait(success, false);
+                return;
             }
 
+            g_snapshot.waiting = false;
+            g_snapshot.running = true;
             return;
         }
 
-        if ((now_ms - g_snapshot.stm.received_time_ms) >= status_freshness_timeout_ms)
+        if ((now_ms - g_snapshot.last_matching_status_time_ms) >= running_status_timeout_ms)
         {
             finish_wait(false, true);
-            return;
-        }
-
-        if (g_snapshot.stm.state == execution_state_complete)
-        {
-            const bool success = g_snapshot.stm.failure_code == error_code_none;
-            finish_wait(success, false);
             return;
         }
 

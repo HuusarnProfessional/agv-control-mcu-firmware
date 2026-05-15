@@ -87,6 +87,7 @@ namespace
 
         {"get_motion_debug()", debug_handlers::handle_get_motion_debug},
         {"get_motion_primitive_status()", debug_handlers::handle_get_motion_primitive_status},
+        {"get_mission_runner_debug()", debug_handlers::handle_get_mission_runner_debug},
         {"get_pure_pursuit_debug()", debug_handlers::handle_get_pure_pursuit_debug},
         {"get_local_position_model_debug()", debug_handlers::handle_get_local_position_model_debug},
         {"get_filtered_global_position_debug()", debug_handlers::handle_get_filtered_global_position_debug},
@@ -95,7 +96,9 @@ namespace
         {"get_filtered_global_offset_fusion_debug()", debug_handlers::handle_get_filtered_global_offset_fusion_debug},
         {"set_position_sensorfusion_bypass(bool:enabled)", debug_handlers::handle_set_position_sensorfusion_bypass},
         {"set_position_sensorfusion_local_only(bool:enabled)", debug_handlers::handle_set_position_sensorfusion_local_only},
+        {"set_position_sensorfusion_global_anchor_test(bool:enabled)", debug_handlers::handle_set_position_sensorfusion_global_anchor_test},
         {"get_voltage_debug()", debug_handlers::handle_get_voltage_debug},
+        {"run_mission_part_test()", debug_handlers::handle_run_mission_part_test},
         {"run_position_capture_test()", debug_handlers::handle_run_position_capture_test}
     };
 

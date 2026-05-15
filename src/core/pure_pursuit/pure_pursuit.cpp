@@ -281,6 +281,11 @@ namespace
         const std::uint16_t fallback_index = find_lookahead_target_from_progress(closest, pure_pursuit_tuning::k_mission_lookahead_mm, fallback_x_mm, fallback_y_mm);
         pure_pursuit_internal::driveable_target_state fallback = pure_pursuit_internal::evaluate_driveable_target(robot_x_mm, robot_y_mm, heading_rad, fallback_x_mm, fallback_y_mm, fallback_index);
 
+        if (fallback.valid == true)
+        {
+            return fallback;
+        }
+
         double scan_distance_mm = pure_pursuit_tuning::k_mission_driveable_target_scan_start_mm;
 
         for (std::uint8_t scan_index = 0u; scan_index < pure_pursuit_tuning::k_mission_driveable_target_scan_count; ++scan_index)
