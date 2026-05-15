@@ -11,6 +11,13 @@
 
 namespace
 {
+    constexpr std::uint8_t stop_reason_none = 0U;
+    constexpr std::uint8_t stop_reason_heartbeat = 1U;
+    constexpr std::uint8_t stop_reason_no_pose = 2U;
+    constexpr std::uint8_t stop_reason_goal_success = 3U;
+    constexpr std::uint8_t stop_reason_goal_fail = 4U;
+    constexpr std::uint8_t stop_reason_external_stop = 5U;
+
     struct closest_path_state
     {
         std::uint16_t segment_index = 0u;
@@ -37,6 +44,15 @@ namespace
 
     void finish_path(bool success)
     {
+        if (success == true)
+        {
+            g_snapshot.stop_reason = stop_reason_goal_success;
+        }
+        else
+        {
+            g_snapshot.stop_reason = stop_reason_goal_fail;
+        }
+
         pure_pursuit_internal::send_stop_motion(g_snapshot);
         g_snapshot.active = false;
         g_snapshot.complete = true;
@@ -60,6 +76,7 @@ namespace
             g_snapshot.active = false;
             g_snapshot.complete = true;
             g_snapshot.success = false;
+            g_snapshot.stop_reason = stop_reason_heartbeat;
             log_fail("tick_validate_runtime heartbeat");
             return false;
         }
@@ -70,6 +87,7 @@ namespace
             g_snapshot.active = false;
             g_snapshot.complete = true;
             g_snapshot.success = false;
+            g_snapshot.stop_reason = stop_reason_no_pose;
             log_fail("tick_validate_runtime local_position");
             return false;
         }
@@ -396,6 +414,11 @@ namespace pure_pursuit
         const double heading_error_deg = pure_pursuit_internal::normalize_angle_deg((std::atan2(dy, dx) * 180.0 / pure_pursuit_tuning::k_pi) - heading_deg);
         const double abs_heading_error_deg = std::fabs(heading_error_deg);
 
+        g_snapshot.robot_x_mm = x_mm;
+        g_snapshot.robot_y_mm = y_mm;
+        g_snapshot.robot_heading_deg = heading_deg;
+        g_snapshot.robot_pose_id = local_position.pose_id;
+        g_snapshot.robot_branch_id = local_position.branch_id;
         write_target_snapshot(target, heading_error_deg);
         log_tracking_state(x_mm, y_mm, heading_deg, closest, target);
 
@@ -450,6 +473,7 @@ namespace pure_pursuit
         g_snapshot = {};
         g_snapshot.active = true;
         g_snapshot.has_path = true;
+        g_snapshot.stop_reason = stop_reason_none;
         g_snapshot.part_number = part_number;
         g_snapshot.point_count = point_count;
         g_snapshot.closest_point_index = 0u;
@@ -470,12 +494,23 @@ namespace pure_pursuit
 
     void stop()
     {
+        const std::uint8_t previous_stop_reason = g_snapshot.stop_reason;
+
         if (g_snapshot.active == true)
         {
             pure_pursuit_internal::send_stop_motion(g_snapshot);
         }
 
         g_snapshot = {};
+
+        if (previous_stop_reason != stop_reason_none)
+        {
+            g_snapshot.stop_reason = previous_stop_reason;
+        }
+        else
+        {
+            g_snapshot.stop_reason = stop_reason_external_stop;
+        }
     }
 
     snapshot read_snapshot()

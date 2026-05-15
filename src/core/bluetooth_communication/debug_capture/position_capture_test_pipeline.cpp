@@ -11,7 +11,7 @@
 #include "../../global_positioning/global_position_api.hpp"
 #include "../../motion_mcu_communication/outgoing_payloads/service/drive_forward_payload.hpp"
 #include "../../motion_mcu_communication/state/incoming/incoming_state.hpp"
-#include "../../position_sensorfusion/global_position_history_filter/global_position_history_filter.hpp"
+#include "../../position_sensorfusion/filtered_global_position/filtered_global_position.hpp"
 
 namespace
 {
@@ -26,6 +26,7 @@ namespace
     constexpr std::uint8_t filter_has_heading_flag = 0x04U;
     constexpr std::uint8_t filter_is_new_sample_flag = 0x08U;
     constexpr std::uint8_t filter_rejected_flag = 0x10U;
+    constexpr std::uint8_t filter_accepted_flag = 0x20U;
 
     enum class capture_state : std::uint8_t
     {
@@ -67,10 +68,12 @@ namespace
         std::int32_t filter_y_um = 0;
         std::int32_t filter_z_um = 0;
         std::int32_t filter_heading_urad = 0;
-        std::uint16_t filter_original_confidence_position = 0U;
+        std::uint16_t filter_raw_confidence_position = 0U;
         std::uint16_t filter_history_confidence = 0U;
         std::uint16_t filter_confidence_position = 0U;
         std::uint16_t filter_confidence_heading = 0U;
+        std::uint8_t filter_accepted_sample_count = 0U;
+        std::uint8_t filter_heading_sample_count = 0U;
         std::uint8_t global_quality_factor = 0U;
         std::uint8_t global_status = 0U;
         std::uint8_t flags = 0U;
@@ -212,7 +215,7 @@ namespace
         global_filter_record record = {};
         global_position_api::global_position_sample global_sample = {};
         const bool has_global_sample = global_position_api::read_sample(global_sample);
-        const global_position_history_filter::output_snapshot filter_output = global_position_history_filter::read_output();
+        const filtered_global_position::output_snapshot filter_output = filtered_global_position::read_output(now_ms);
 
         record.now_ms = now_ms;
         record.global_sample_id = global_sample.sample_id;
@@ -226,10 +229,12 @@ namespace
         record.filter_y_um = static_cast<std::int32_t>(filter_output.y_um);
         record.filter_z_um = static_cast<std::int32_t>(filter_output.z_um);
         record.filter_heading_urad = filter_output.heading_urad;
-        record.filter_original_confidence_position = filter_output.original_confidence_position;
+        record.filter_raw_confidence_position = filter_output.raw_confidence_position;
         record.filter_history_confidence = filter_output.history_confidence;
         record.filter_confidence_position = filter_output.confidence_position;
         record.filter_confidence_heading = filter_output.confidence_heading;
+        record.filter_accepted_sample_count = filter_output.accepted_sample_count;
+        record.filter_heading_sample_count = filter_output.heading_sample_count;
         record.global_quality_factor = global_sample.quality_factor;
         record.global_status = static_cast<std::uint8_t>(global_sample.status);
 
@@ -256,6 +261,11 @@ namespace
         if (filter_output.rejected == true)
         {
             record.flags |= filter_rejected_flag;
+        }
+
+        if (filter_output.accepted == true)
+        {
+            record.flags |= filter_accepted_flag;
         }
 
         return record;
@@ -465,7 +475,7 @@ namespace
 
     bool stream_global_filter_columns()
     {
-        if (write_line("position_capture_global_filter_columns idx now_ms global_valid global_sample_id global_received_time_ms global_x_mm global_y_mm global_z_mm global_quality_factor global_status filter_has_position filter_x_um filter_y_um filter_z_um filter_original_confidence_position filter_history_confidence filter_confidence_position filter_has_heading filter_heading_urad filter_confidence_heading filter_is_new_sample filter_rejected filter_sample_id filter_received_time_ms") == false)
+        if (write_line("position_capture_global_filter_columns idx now_ms global_valid global_sample_id global_received_time_ms global_x_mm global_y_mm global_z_mm global_quality_factor global_status filter_has_position filter_x_um filter_y_um filter_z_um filter_raw_confidence_position filter_history_confidence filter_confidence_position filter_has_heading filter_heading_urad filter_confidence_heading filter_is_new_sample filter_accepted filter_rejected filter_sample_id filter_received_time_ms filter_accepted_sample_count filter_heading_sample_count") == false)
         {
             return false;
         }
@@ -487,7 +497,7 @@ namespace
         }
 
         const global_filter_record &record = g_global_filter_records[g_stream_index];
-        std::snprintf(line, sizeof(line), "position_capture_global_filter_record %lu %lu %u %lu %lu %ld %ld %ld %u %u %u %ld %ld %ld %u %u %u %u %ld %u %u %u %lu %lu", static_cast<unsigned long>(g_stream_index), static_cast<unsigned long>(record.now_ms), (record.flags & global_valid_flag) != 0U ? 1U : 0U, static_cast<unsigned long>(record.global_sample_id), static_cast<unsigned long>(record.global_received_time_ms), static_cast<long>(record.global_x_mm), static_cast<long>(record.global_y_mm), static_cast<long>(record.global_z_mm), static_cast<unsigned>(record.global_quality_factor), static_cast<unsigned>(record.global_status), (record.flags & filter_has_position_flag) != 0U ? 1U : 0U, static_cast<long>(record.filter_x_um), static_cast<long>(record.filter_y_um), static_cast<long>(record.filter_z_um), static_cast<unsigned>(record.filter_original_confidence_position), static_cast<unsigned>(record.filter_history_confidence), static_cast<unsigned>(record.filter_confidence_position), (record.flags & filter_has_heading_flag) != 0U ? 1U : 0U, static_cast<long>(record.filter_heading_urad), static_cast<unsigned>(record.filter_confidence_heading), (record.flags & filter_is_new_sample_flag) != 0U ? 1U : 0U, (record.flags & filter_rejected_flag) != 0U ? 1U : 0U, static_cast<unsigned long>(record.filter_sample_id), static_cast<unsigned long>(record.filter_received_time_ms));
+        std::snprintf(line, sizeof(line), "position_capture_global_filter_record %lu %lu %u %lu %lu %ld %ld %ld %u %u %u %ld %ld %ld %u %u %u %u %ld %u %u %u %u %lu %lu %u %u", static_cast<unsigned long>(g_stream_index), static_cast<unsigned long>(record.now_ms), (record.flags & global_valid_flag) != 0U ? 1U : 0U, static_cast<unsigned long>(record.global_sample_id), static_cast<unsigned long>(record.global_received_time_ms), static_cast<long>(record.global_x_mm), static_cast<long>(record.global_y_mm), static_cast<long>(record.global_z_mm), static_cast<unsigned>(record.global_quality_factor), static_cast<unsigned>(record.global_status), (record.flags & filter_has_position_flag) != 0U ? 1U : 0U, static_cast<long>(record.filter_x_um), static_cast<long>(record.filter_y_um), static_cast<long>(record.filter_z_um), static_cast<unsigned>(record.filter_raw_confidence_position), static_cast<unsigned>(record.filter_history_confidence), static_cast<unsigned>(record.filter_confidence_position), (record.flags & filter_has_heading_flag) != 0U ? 1U : 0U, static_cast<long>(record.filter_heading_urad), static_cast<unsigned>(record.filter_confidence_heading), (record.flags & filter_is_new_sample_flag) != 0U ? 1U : 0U, (record.flags & filter_accepted_flag) != 0U ? 1U : 0U, (record.flags & filter_rejected_flag) != 0U ? 1U : 0U, static_cast<unsigned long>(record.filter_sample_id), static_cast<unsigned long>(record.filter_received_time_ms), static_cast<unsigned>(record.filter_accepted_sample_count), static_cast<unsigned>(record.filter_heading_sample_count));
 
         if (write_line(line) == false)
         {

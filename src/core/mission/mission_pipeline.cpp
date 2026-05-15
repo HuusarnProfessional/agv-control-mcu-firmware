@@ -328,7 +328,12 @@ namespace mission_pipeline
 
     void tick(std::uint32_t now_ms)
     {
-        (void)now_ms;
+        mission_runner::tick(now_ms);
+
+        if (mission_runner::started_this_tick() == true)
+        {
+            return;
+        }
 
         std::uint16_t current_part = 0u;
         const bool has_current_part = mission_runner::get_current_part(current_part);

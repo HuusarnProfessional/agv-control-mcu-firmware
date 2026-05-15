@@ -1,4 +1,4 @@
-#include "global_offset_fusion.hpp"
+#include "filtered_global_offset_fusion.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -23,7 +23,9 @@ namespace
     };
 
     offset_state current_offset = {};
-    global_offset_fusion::output_snapshot latest_output = {};
+    filtered_global_offset_fusion::output_snapshot latest_output = {};
+    bool has_last_branch_id = false;
+    std::uint8_t last_branch_id = 0U;
 
     std::int32_t normalize_angle_urad(std::int32_t angle_urad)
     {
@@ -46,16 +48,6 @@ namespace
     std::uint16_t larger_confidence(std::uint16_t left, std::uint16_t right)
     {
         if (left > right)
-        {
-            return left;
-        }
-
-        return right;
-    }
-
-    std::uint16_t smaller_confidence(std::uint16_t left, std::uint16_t right)
-    {
-        if (left < right)
         {
             return left;
         }
@@ -93,7 +85,7 @@ namespace
         return static_cast<std::int32_t>(step_urad);
     }
 
-    bool global_position_should_update_offset(const global_position_history_filter::output_snapshot &global_position)
+    bool global_position_should_update_offset(const filtered_global_position::output_snapshot &global_position)
     {
         if (global_position.has_position == false)
         {
@@ -101,6 +93,11 @@ namespace
         }
 
         if (global_position.is_new_sample == false)
+        {
+            return false;
+        }
+
+        if (global_position.accepted == false)
         {
             return false;
         }
@@ -113,7 +110,43 @@ namespace
         return true;
     }
 
-    void update_position_offset(const local_position_alignment_to_global::output_snapshot &local_position, const global_position_history_filter::output_snapshot &global_position)
+    void clear_offset_only()
+    {
+        current_offset = {};
+    }
+
+    void clear_runtime_state()
+    {
+        clear_offset_only();
+        latest_output = {};
+        has_last_branch_id = false;
+        last_branch_id = 0U;
+    }
+
+    void update_branch_tracking(const local_to_global_transform::output_snapshot &local_position)
+    {
+        if (local_position.has_pose == false)
+        {
+            return;
+        }
+
+        if (has_last_branch_id == false)
+        {
+            has_last_branch_id = true;
+            last_branch_id = local_position.branch_id;
+            return;
+        }
+
+        if (local_position.branch_id == last_branch_id)
+        {
+            return;
+        }
+
+        clear_offset_only();
+        last_branch_id = local_position.branch_id;
+    }
+
+    void update_position_offset(const local_to_global_transform::output_snapshot &local_position, const filtered_global_position::output_snapshot &global_position)
     {
         const std::int64_t measured_offset_x_um = global_position.x_um - local_position.x_um;
         const std::int64_t measured_offset_y_um = global_position.y_um - local_position.y_um;
@@ -136,7 +169,7 @@ namespace
         current_offset.global_sample_id = global_position.sample_id;
     }
 
-    void update_heading_offset(const local_position_alignment_to_global::output_snapshot &local_position, const global_position_history_filter::output_snapshot &global_position)
+    void update_heading_offset(const local_to_global_transform::output_snapshot &local_position, const filtered_global_position::output_snapshot &global_position)
     {
         if (global_position.has_heading == false)
         {
@@ -158,7 +191,7 @@ namespace
         current_offset.confidence_heading = larger_confidence(current_offset.confidence_heading, global_position.confidence_heading);
     }
 
-    void update_offset_from_global(const local_position_alignment_to_global::output_snapshot &local_position, const global_position_history_filter::output_snapshot &global_position)
+    void update_offset_from_global(const local_to_global_transform::output_snapshot &local_position, const filtered_global_position::output_snapshot &global_position)
     {
         if (local_position.has_pose == false)
         {
@@ -174,9 +207,9 @@ namespace
         update_heading_offset(local_position, global_position);
     }
 
-    global_offset_fusion::output_snapshot build_from_local(const local_position_alignment_to_global::output_snapshot &local_position)
+    filtered_global_offset_fusion::output_snapshot build_from_local(const local_to_global_transform::output_snapshot &local_position)
     {
-        global_offset_fusion::output_snapshot output = {};
+        filtered_global_offset_fusion::output_snapshot output = {};
 
         if (local_position.has_pose == false)
         {
@@ -196,23 +229,23 @@ namespace
         {
             output.x_um += current_offset.x_um;
             output.y_um += current_offset.y_um;
-            output.confidence_position = larger_confidence(local_position.confidence_position, current_offset.confidence_position);
+            output.confidence_position = larger_confidence(output.confidence_position, current_offset.confidence_position);
             output.has_offset = true;
         }
 
         if (current_offset.heading_valid == true)
         {
-            output.heading_urad = normalize_angle_urad(local_position.heading_urad + current_offset.heading_urad);
-            output.confidence_heading = larger_confidence(local_position.confidence_heading, current_offset.confidence_heading);
+            output.heading_urad = normalize_angle_urad(output.heading_urad + current_offset.heading_urad);
+            output.confidence_heading = larger_confidence(output.confidence_heading, current_offset.confidence_heading);
             output.has_heading_offset = true;
         }
 
         return output;
     }
 
-    global_offset_fusion::output_snapshot build_from_global(const global_position_history_filter::output_snapshot &global_position)
+    filtered_global_offset_fusion::output_snapshot build_from_global(const filtered_global_position::output_snapshot &global_position)
     {
-        global_offset_fusion::output_snapshot output = {};
+        filtered_global_offset_fusion::output_snapshot output = {};
 
         if (global_position.has_position == false)
         {
@@ -234,20 +267,25 @@ namespace
     }
 }
 
-namespace global_offset_fusion
+namespace filtered_global_offset_fusion
 {
     void init()
     {
-        current_offset = {};
-        latest_output = {};
+        clear_runtime_state();
     }
 
-    output_snapshot update(const local_position_alignment_to_global::output_snapshot &local_position, const global_position_history_filter::output_snapshot &global_position)
+    void reset_runtime_state()
     {
-        if (local_position.has_pose == true)
+        clear_runtime_state();
+    }
+
+    output_snapshot update(const local_to_global_transform::output_snapshot &transformed_local_position, const filtered_global_position::output_snapshot &global_position)
+    {
+        if (transformed_local_position.has_pose == true)
         {
-            update_offset_from_global(local_position, global_position);
-            latest_output = build_from_local(local_position);
+            update_branch_tracking(transformed_local_position);
+            update_offset_from_global(transformed_local_position, global_position);
+            latest_output = build_from_local(transformed_local_position);
 
             return latest_output;
         }

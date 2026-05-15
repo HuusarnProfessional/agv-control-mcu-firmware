@@ -89,7 +89,12 @@ namespace
         {"get_motion_primitive_status()", debug_handlers::handle_get_motion_primitive_status},
         {"get_pure_pursuit_debug()", debug_handlers::handle_get_pure_pursuit_debug},
         {"get_local_position_model_debug()", debug_handlers::handle_get_local_position_model_debug},
-        {"get_global_position_history_filter_debug()", debug_handlers::handle_get_global_position_history_filter_debug},
+        {"get_filtered_global_position_debug()", debug_handlers::handle_get_filtered_global_position_debug},
+        {"get_global_reference_selector_debug()", debug_handlers::handle_get_global_reference_selector_debug},
+        {"get_local_to_global_transform_debug()", debug_handlers::handle_get_local_to_global_transform_debug},
+        {"get_filtered_global_offset_fusion_debug()", debug_handlers::handle_get_filtered_global_offset_fusion_debug},
+        {"set_position_sensorfusion_bypass(bool:enabled)", debug_handlers::handle_set_position_sensorfusion_bypass},
+        {"set_position_sensorfusion_local_only(bool:enabled)", debug_handlers::handle_set_position_sensorfusion_local_only},
         {"get_voltage_debug()", debug_handlers::handle_get_voltage_debug},
         {"run_position_capture_test()", debug_handlers::handle_run_position_capture_test}
     };

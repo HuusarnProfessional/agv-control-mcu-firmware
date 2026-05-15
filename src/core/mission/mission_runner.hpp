@@ -16,6 +16,10 @@ namespace mission_runner
 
     void init();
 
+    void tick(std::uint32_t now_ms);
+
+    bool started_this_tick();
+
     runner_status start_mission(const char *mission_id);
 
     runner_status abort_mission();

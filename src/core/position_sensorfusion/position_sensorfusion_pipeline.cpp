@@ -1,28 +1,33 @@
 #include "position_sensorfusion_pipeline.hpp"
 
-#include "global_offset_fusion/global_offset_fusion.hpp"
-#include "global_position_heading/global_position_heading.hpp"
-#include "global_position_history_filter/global_position_history_filter.hpp"
-#include "local_position_alignment_to_global/local_position_alignment_to_global.hpp"
+#include "filtered_global_offset_fusion/filtered_global_offset_fusion.hpp"
+#include "filtered_global_position/filtered_global_position.hpp"
+#include "global_reference_selector/global_reference_selector.hpp"
+#include "local_to_global_transform/local_to_global_transform.hpp"
+#include "mission_reference_seed/mission_reference_seed.hpp"
 #include "position_sensorfusion.hpp"
 
-#include "../global_positioning/global_position_api.hpp"
+#include "../mission/mission_runner.hpp"
 #include "../motion_mcu_communication/state/incoming/incoming_state.hpp"
 #include "../motion_mcu_communication/outgoing_payloads/service/position_correction_payload.hpp"
 
 namespace
 {
-    void send_branch_request_if_needed(const local_position_alignment_to_global::output_snapshot &aligned_local_position)
+    bool previous_mission_running = false;
+    bool bypass_offset_fusion = false;
+    bool local_only_mode = false;
+
+    void send_branch_request_if_needed(const global_reference_selector::output_snapshot &reference_decision)
     {
-        if (aligned_local_position.request.has_request == false)
+        if (reference_decision.request.has_request == false)
         {
             return;
         }
 
-        (void)position_correction_payload::send(aligned_local_position.request.pose_id, aligned_local_position.request.branch_id);
+        (void)position_correction_payload::send(reference_decision.request.pose_id, reference_decision.request.branch_id);
     }
 
-    position_sensorfusion::output_snapshot convert_output(const global_offset_fusion::output_snapshot &offset_output)
+    position_sensorfusion::output_snapshot convert_output(const filtered_global_offset_fusion::output_snapshot &offset_output)
     {
         position_sensorfusion::output_snapshot output = {};
 
@@ -38,17 +43,54 @@ namespace
         return output;
     }
 
-    global_position_heading::output_snapshot update_global_position_heading()
+    position_sensorfusion::output_snapshot convert_output(const local_to_global_transform::output_snapshot &transformed_local_position)
     {
-        global_position_api::global_position_sample global_sample = {};
-        const bool has_sample = global_position_api::read_sample(global_sample);
+        position_sensorfusion::output_snapshot output = {};
 
-        if (has_sample == true)
+        output.has_pose = transformed_local_position.has_pose;
+        output.x_um = transformed_local_position.x_um;
+        output.y_um = transformed_local_position.y_um;
+        output.heading_urad = transformed_local_position.heading_urad;
+        output.confidence_position = transformed_local_position.confidence_position;
+        output.confidence_heading = transformed_local_position.confidence_heading;
+        output.pose_id = transformed_local_position.pose_id;
+        output.branch_id = transformed_local_position.branch_id;
+
+        return output;
+    }
+
+    global_reference_selector::current_reference_snapshot convert_current_reference(const local_to_global_transform::output_snapshot &transformed_local_position)
+    {
+        global_reference_selector::current_reference_snapshot reference = {};
+
+        if (transformed_local_position.has_transform == true)
         {
-            return global_position_heading::update(global_sample);
+            if (transformed_local_position.branch_matches == true)
+            {
+                reference.has_reference = true;
+            }
         }
 
-        return global_position_heading::read_output();
+        reference.confidence_position = transformed_local_position.confidence_position;
+        reference.confidence_heading = transformed_local_position.confidence_heading;
+        reference.branch_id = transformed_local_position.branch_id;
+
+        return reference;
+    }
+
+    void update_mission_runtime_state()
+    {
+        const bool mission_running = mission_runner::is_running();
+
+        if ((mission_running == true) && (previous_mission_running == false))
+        {
+            mission_reference_seed::reset_runtime_state();
+            global_reference_selector::reset_runtime_state();
+            local_to_global_transform::reset_runtime_state();
+            filtered_global_offset_fusion::reset_runtime_state();
+        }
+
+        previous_mission_running = mission_running;
     }
 }
 
@@ -56,24 +98,92 @@ namespace position_sensorfusion_pipeline
 {
     void init()
     {
-        global_position_heading::init();
-        global_position_history_filter::init();
-        local_position_alignment_to_global::init();
-        global_offset_fusion::init();
+        filtered_global_position::init();
+        global_reference_selector::init();
+        local_to_global_transform::init();
+        mission_reference_seed::init();
+        filtered_global_offset_fusion::init();
         position_sensorfusion::set_output({});
+        previous_mission_running = false;
+        bypass_offset_fusion = false;
+        local_only_mode = false;
+    }
+
+    void set_bypass_offset_fusion(bool enabled)
+    {
+        bypass_offset_fusion = enabled;
+        filtered_global_offset_fusion::reset_runtime_state();
+    }
+
+    bool is_bypass_offset_fusion_enabled()
+    {
+        return bypass_offset_fusion;
+    }
+
+    void set_local_only_mode(bool enabled)
+    {
+        local_only_mode = enabled;
+        global_reference_selector::reset_runtime_state();
+        local_to_global_transform::reset_runtime_state();
+        filtered_global_offset_fusion::reset_runtime_state();
+        position_sensorfusion::set_output({});
+    }
+
+    bool is_local_only_mode_enabled()
+    {
+        return local_only_mode;
     }
 
     void tick(std::uint32_t now_ms)
     {
+        update_mission_runtime_state();
+
         const motion_mcu_incoming_state::local_position_state local_position = motion_mcu_incoming_state::get_local_position();
-        const global_position_heading::output_snapshot global_position = update_global_position_heading();
-        const global_position_history_filter::output_snapshot filtered_global_position = global_position_history_filter::update(global_position);
-        const local_position_alignment_to_global::output_snapshot aligned_local_position = local_position_alignment_to_global::update(local_position, global_position, now_ms);
+        const filtered_global_position::output_snapshot strong_global_position = filtered_global_position::update(now_ms);
+        const local_to_global_transform::output_snapshot current_transformed_local_position = local_to_global_transform::read_output(local_position, now_ms);
+        const global_reference_selector::current_reference_snapshot current_reference = convert_current_reference(current_transformed_local_position);
+        const global_reference_selector::reference_activation mission_activation = mission_reference_seed::update(local_position, current_reference, now_ms);
+        global_reference_selector::output_snapshot reference_decision = {};
+        local_to_global_transform::output_snapshot transformed_local_position = {};
 
-        send_branch_request_if_needed(aligned_local_position);
+        if (mission_activation.has_activation == true)
+        {
+            transformed_local_position = local_to_global_transform::update(local_position, mission_activation, now_ms);
+        }
+        else if (local_only_mode == true)
+        {
+            transformed_local_position = local_to_global_transform::read_output(local_position, now_ms);
+        }
+        else if (mission_reference_seed::is_pending() == true)
+        {
+            transformed_local_position = local_to_global_transform::read_output(local_position, now_ms);
+        }
+        else if (mission_runner::is_running() == true)
+        {
+            transformed_local_position = local_to_global_transform::read_output(local_position, now_ms);
+        }
+        else
+        {
+            reference_decision = global_reference_selector::update(local_position, strong_global_position, current_reference, now_ms);
+            transformed_local_position = local_to_global_transform::update(local_position, reference_decision.activation, now_ms);
+        }
 
-        const global_offset_fusion::output_snapshot offset_output = global_offset_fusion::update(aligned_local_position, filtered_global_position);
-        const position_sensorfusion::output_snapshot output = convert_output(offset_output);
+        if (local_only_mode == false)
+        {
+            send_branch_request_if_needed(reference_decision);
+        }
+
+        position_sensorfusion::output_snapshot output = {};
+
+        if ((local_only_mode == true) || (bypass_offset_fusion == true) || (mission_runner::is_running() == true))
+        {
+            output = convert_output(transformed_local_position);
+        }
+        else
+        {
+            const filtered_global_offset_fusion::output_snapshot offset_output = filtered_global_offset_fusion::update(transformed_local_position, strong_global_position);
+            output = convert_output(offset_output);
+        }
 
         position_sensorfusion::set_output(output);
     }

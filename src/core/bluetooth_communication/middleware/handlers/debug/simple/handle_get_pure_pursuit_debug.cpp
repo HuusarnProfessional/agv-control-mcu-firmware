@@ -18,7 +18,7 @@ namespace debug_handlers
 
         const pure_pursuit::snapshot state = pure_pursuit::read_snapshot();
 
-        char response[512] = {};
+        char response[768] = {};
         std::size_t offset = 0U;
 
         const bool formatted =
@@ -36,6 +36,12 @@ namespace debug_handlers
             debug_handler_helpers::append_format(response, sizeof(response), offset, " lookahead_idx %u", static_cast<unsigned>(state.lookahead_point_index)) &&
             debug_handler_helpers::append_format(response, sizeof(response), offset, " linear_mm_s %ld", static_cast<long>(state.linear_velocity_mm_s)) &&
             debug_handler_helpers::append_format(response, sizeof(response), offset, " yaw_rate_mdeg_s %ld", static_cast<long>(state.yaw_rate_mdeg_s)) &&
+            debug_handler_helpers::append_format(response, sizeof(response), offset, " stop_reason %u", static_cast<unsigned>(state.stop_reason)) &&
+            debug_handler_helpers::append_format(response, sizeof(response), offset, " robot_x_mm %.1f", state.robot_x_mm) &&
+            debug_handler_helpers::append_format(response, sizeof(response), offset, " robot_y_mm %.1f", state.robot_y_mm) &&
+            debug_handler_helpers::append_format(response, sizeof(response), offset, " robot_heading_deg %.2f", state.robot_heading_deg) &&
+            debug_handler_helpers::append_format(response, sizeof(response), offset, " robot_pose_id %u", static_cast<unsigned>(state.robot_pose_id)) &&
+            debug_handler_helpers::append_format(response, sizeof(response), offset, " robot_branch_id %u", static_cast<unsigned>(state.robot_branch_id)) &&
             debug_handler_helpers::append_format(response, sizeof(response), offset, " target_x_mm %.1f", state.target_x_mm) &&
             debug_handler_helpers::append_format(response, sizeof(response), offset, " target_y_mm %.1f", state.target_y_mm) &&
             debug_handler_helpers::append_format(response, sizeof(response), offset, " target_curvature %.5f", state.target_curvature) &&
