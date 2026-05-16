@@ -18,7 +18,7 @@ namespace global_reference_selector
     struct branch_request
     {
         bool has_request = false;
-        std::uint8_t pose_id = 0U;
+        std::uint16_t pose_id = 0U;
         std::uint8_t branch_id = 0U;
         std::uint16_t reference_score = 0U;
     };
@@ -28,7 +28,7 @@ namespace global_reference_selector
         bool has_activation = false;
         bool is_initial_reference = false;
         bool is_mission_seed = false;
-        std::uint8_t source_pose_id = 0U;
+        std::uint16_t source_pose_id = 0U;
         std::uint8_t source_branch_id = 0U;
         std::uint32_t activation_time_ms = 0U;
         std::uint16_t reference_score = 0U;
@@ -42,7 +42,7 @@ namespace global_reference_selector
 
         bool pending = false;
         bool settling = false;
-        std::uint8_t pending_pose_id = 0U;
+        std::uint16_t pending_pose_id = 0U;
         std::uint8_t pending_branch_id = 0U;
         std::uint32_t pending_global_sample_id = 0U;
         std::uint16_t global_reference_score = 0U;

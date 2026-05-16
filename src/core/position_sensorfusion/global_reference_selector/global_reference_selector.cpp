@@ -15,7 +15,7 @@ namespace
     struct pending_reference_state
     {
         bool pending = false;
-        std::uint8_t source_pose_id = 0U;
+        std::uint16_t source_pose_id = 0U;
         std::uint8_t source_branch_id = 0U;
         std::uint32_t request_time_ms = 0U;
         std::uint16_t reference_score = 0U;

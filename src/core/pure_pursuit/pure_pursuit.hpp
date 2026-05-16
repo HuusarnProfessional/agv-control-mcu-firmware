@@ -26,7 +26,7 @@ namespace pure_pursuit
         double robot_x_mm = 0.0;
         double robot_y_mm = 0.0;
         double robot_heading_deg = 0.0;
-        std::uint8_t robot_pose_id = 0U;
+        std::uint16_t robot_pose_id = 0U;
         std::uint8_t robot_branch_id = 0U;
         double target_x_mm = 0.0;
         double target_y_mm = 0.0;

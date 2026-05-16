@@ -15,8 +15,8 @@ namespace local_position_payload
         const bool has_heading = payload_helper_functions::read_i32_le(payload_data, payload_length, 17U, state.heading_urad);
         const bool has_confidence_position = payload_helper_functions::read_u16_le(payload_data, payload_length, 21U, state.confidence_position);
         const bool has_confidence_heading = payload_helper_functions::read_u16_le(payload_data, payload_length, 23U, state.confidence_heading);
-        const bool has_pose_id = payload_helper_functions::read_u8(payload_data, payload_length, 25U, state.pose_id);
-        const bool has_branch_id = payload_helper_functions::read_u8(payload_data, payload_length, 26U, state.branch_id);
+        const bool has_pose_id = payload_helper_functions::read_u16_le(payload_data, payload_length, 25U, state.pose_id);
+        const bool has_branch_id = payload_helper_functions::read_u8(payload_data, payload_length, 27U, state.branch_id);
 
         if ((has_pose == true) &&
             (has_x == true) &&

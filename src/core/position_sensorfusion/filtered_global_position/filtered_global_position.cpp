@@ -724,14 +724,28 @@ namespace
 
     std::uint16_t calculate_window_position_confidence(std::uint8_t last_index)
     {
-        std::uint16_t confidence = full_confidence;
+        std::int64_t confidence_values[history_size] = {};
+        std::uint8_t confidence_count = 0U;
 
         for (std::uint8_t index = 0U; index <= last_index; index++)
         {
-            confidence = smaller_confidence(confidence, history[index].confidence_position);
+            if (history[index].valid == false)
+            {
+                continue;
+            }
+
+            confidence_values[confidence_count] = static_cast<std::int64_t>(history[index].confidence_position);
+            confidence_count++;
         }
 
-        return confidence;
+        if (confidence_count == 0U)
+        {
+            return 0U;
+        }
+
+        const std::int64_t median_confidence = median_value(confidence_values, confidence_count);
+
+        return static_cast<std::uint16_t>(median_confidence);
     }
 
     std::int64_t calculate_max_line_error_um(std::uint8_t last_index)
