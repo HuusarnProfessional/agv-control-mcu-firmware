@@ -174,13 +174,24 @@ namespace
         }
 
         active_transform.valid = true;
-        active_transform.local_reference_x_um = local_position.x_um;
-        active_transform.local_reference_y_um = local_position.y_um;
-        active_transform.local_reference_heading_urad = local_position.heading_urad;
+
+        if ((activation.is_initial_reference == true) || (activation.is_mission_seed == true))
+        {
+            active_transform.local_reference_x_um = local_position.x_um;
+            active_transform.local_reference_y_um = local_position.y_um;
+            active_transform.local_reference_heading_urad = local_position.heading_urad;
+        }
+        else
+        {
+            active_transform.local_reference_x_um = 0;
+            active_transform.local_reference_y_um = 0;
+            active_transform.local_reference_heading_urad = 0;
+        }
+
         active_transform.global_reference_x_um = activation.global_reference.x_um;
         active_transform.global_reference_y_um = activation.global_reference.y_um;
         active_transform.global_reference_heading_urad = activation.global_reference.heading_urad;
-        active_transform.rotation_urad = normalize_angle_urad(activation.global_reference.heading_urad - local_position.heading_urad);
+        active_transform.rotation_urad = normalize_angle_urad(activation.global_reference.heading_urad - active_transform.local_reference_heading_urad);
         active_transform.confidence_position = activation.global_reference.confidence_position;
         active_transform.confidence_heading = activation.global_reference.confidence_heading;
         active_transform.branch_id = local_position.branch_id;

@@ -147,7 +147,7 @@ namespace position_sensorfusion_pipeline
         update_mission_runtime_state();
 
         const motion_mcu_incoming_state::local_position_state local_position = motion_mcu_incoming_state::get_local_position();
-        const filtered_global_position::output_snapshot strong_global_position = filtered_global_position::update(now_ms);
+        const filtered_global_position::output_snapshot strong_global_position = filtered_global_position::update(now_ms, local_position);
         const local_to_global_transform::output_snapshot current_transformed_local_position = local_to_global_transform::read_output(local_position, now_ms);
         const global_reference_selector::current_reference_snapshot current_reference = convert_current_reference(current_transformed_local_position);
         const global_reference_selector::reference_activation mission_activation = mission_reference_seed::update(local_position, current_reference, now_ms);

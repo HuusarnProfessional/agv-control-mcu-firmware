@@ -17,6 +17,8 @@ namespace
     constexpr std::int64_t bootstrap_good_spread_um = 250000;
     constexpr std::int64_t bootstrap_zero_spread_um = 1000000;
 
+    constexpr filtered_global_position::filtered_global_heading_mode global_heading_mode = filtered_global_position::filtered_global_heading_mode::huber_pca;
+
     constexpr std::uint8_t history_size = 64U;
     constexpr std::uint8_t minimum_heading_sample_count = 6U;
     constexpr std::uint8_t full_heading_sample_count = 12U;
@@ -34,11 +36,23 @@ namespace
     constexpr std::int64_t position_step_base_um = 30000;
     constexpr std::int64_t position_step_speed_um_per_ms = 300;
 
-    constexpr std::int64_t heading_min_distance_um = 500000;
-    constexpr std::int64_t heading_full_distance_um = 1500000;
-    constexpr std::int64_t heading_good_line_error_um = 120000;
-    constexpr std::int64_t heading_zero_line_error_um = 450000;
-    constexpr std::uint32_t heading_max_window_age_ms = 6000U;
+    constexpr std::int64_t chord_heading_min_distance_um = 300000;
+    constexpr std::int64_t chord_heading_full_distance_um = 900000;
+    constexpr std::int64_t chord_heading_good_line_error_um = 120000;
+    constexpr std::int64_t chord_heading_zero_line_error_um = 450000;
+    constexpr std::uint32_t chord_heading_max_window_age_ms = 2500U;
+
+    constexpr std::uint32_t huber_pca_heading_max_age_ms = 2500U;
+    constexpr std::uint32_t huber_pca_heading_estimated_delay_ms = 1300U;
+    constexpr std::int64_t huber_pca_heading_min_distance_um = 300000;
+    constexpr std::int64_t huber_pca_heading_full_distance_um = 900000;
+    constexpr std::uint8_t huber_pca_heading_min_sample_count = 6U;
+    constexpr std::uint8_t huber_pca_heading_full_sample_count = 12U;
+    constexpr std::uint8_t huber_pca_heading_max_sample_count = 25U;
+    constexpr std::uint32_t huber_pca_delta_um = 20000U;
+    constexpr std::uint32_t huber_pca_good_residual_um = 20000U;
+    constexpr std::uint32_t huber_pca_zero_residual_um = 120000U;
+    constexpr std::uint8_t huber_pca_iteration_count = 6U;
 
     constexpr std::uint32_t position_confidence_full_age_ms = 250U;
     constexpr std::uint32_t position_confidence_zero_age_ms = 2500U;
@@ -55,6 +69,8 @@ namespace
         std::int64_t y_um = 0;
         std::int64_t z_um = 0;
         std::uint16_t confidence_position = 0U;
+        std::uint16_t pose_id = 0U;
+        std::uint8_t branch_id = 0U;
     };
 
     struct stable_state
@@ -72,6 +88,51 @@ namespace
         std::uint32_t heading_time_ms = 0U;
         std::uint8_t heading_sample_count = 0U;
         std::int64_t heading_distance_um = 0;
+        std::uint32_t heading_reference_time_ms = 0U;
+        std::uint32_t heading_reference_sample_id = 0U;
+        std::uint32_t heading_estimated_delay_ms = 0U;
+        std::uint16_t heading_reference_pose_id = 0U;
+        std::uint8_t heading_reference_branch_id = 0U;
+        std::int64_t heading_reference_x_um = 0;
+        std::int64_t heading_reference_y_um = 0;
+        std::int64_t heading_reference_z_um = 0;
+        std::uint32_t heading_fit_residual_um = 0U;
+        std::uint8_t huber_pca_used_sample_count = 0U;
+        std::uint32_t huber_pca_median_residual_um = 0U;
+        std::uint32_t huber_pca_max_residual_um = 0U;
+        std::uint32_t huber_pca_movement_distance_um = 0U;
+        std::uint32_t huber_pca_window_age_ms = 0U;
+        std::uint8_t chord_used_sample_count = 0U;
+        std::int64_t chord_distance_um = 0;
+        std::int64_t chord_max_line_error_um = 0;
+        std::uint32_t chord_window_age_ms = 0U;
+    };
+
+    struct heading_estimate_candidate
+    {
+        std::int32_t heading_urad = 0;
+        std::uint16_t confidence_heading = 0U;
+        std::uint32_t heading_time_ms = 0U;
+        std::uint8_t heading_sample_count = 0U;
+        std::int64_t heading_distance_um = 0;
+        std::uint32_t heading_reference_time_ms = 0U;
+        std::uint32_t heading_reference_sample_id = 0U;
+        std::uint32_t heading_estimated_delay_ms = 0U;
+        std::uint16_t heading_reference_pose_id = 0U;
+        std::uint8_t heading_reference_branch_id = 0U;
+        std::int64_t heading_reference_x_um = 0;
+        std::int64_t heading_reference_y_um = 0;
+        std::int64_t heading_reference_z_um = 0;
+        std::uint32_t heading_fit_residual_um = 0U;
+        std::uint8_t huber_pca_used_sample_count = 0U;
+        std::uint32_t huber_pca_median_residual_um = 0U;
+        std::uint32_t huber_pca_max_residual_um = 0U;
+        std::uint32_t huber_pca_movement_distance_um = 0U;
+        std::uint32_t huber_pca_window_age_ms = 0U;
+        std::uint8_t chord_used_sample_count = 0U;
+        std::int64_t chord_distance_um = 0;
+        std::int64_t chord_max_line_error_um = 0;
+        std::uint32_t chord_window_age_ms = 0U;
     };
 
     accepted_sample history[history_size] = {};
@@ -238,6 +299,35 @@ namespace
         return confidence;
     }
 
+    std::uint16_t sample_count_to_confidence(std::uint8_t sample_count, std::uint8_t minimum_sample_count, std::uint8_t full_sample_count)
+    {
+        if (sample_count < minimum_sample_count)
+        {
+            return 0U;
+        }
+
+        if (sample_count >= full_sample_count)
+        {
+            return full_confidence;
+        }
+
+        const std::uint8_t range = full_sample_count - minimum_sample_count;
+        const std::uint8_t progress = sample_count - minimum_sample_count;
+        const std::uint16_t confidence = static_cast<std::uint16_t>(progress) * full_confidence / static_cast<std::uint16_t>(range);
+
+        return confidence;
+    }
+
+    std::uint32_t absolute_time_difference_ms(std::uint32_t left_time_ms, std::uint32_t right_time_ms)
+    {
+        if (left_time_ms >= right_time_ms)
+        {
+            return left_time_ms - right_time_ms;
+        }
+
+        return right_time_ms - left_time_ms;
+    }
+
     std::int64_t calculate_distance_um(std::int64_t delta_x_um, std::int64_t delta_y_um)
     {
         const double delta_x = static_cast<double>(delta_x_um);
@@ -319,7 +409,7 @@ namespace
         return median;
     }
 
-    accepted_sample convert_sample(const global_position_api::global_position_sample &sample)
+    accepted_sample convert_sample(const global_position_api::global_position_sample &sample, const motion_mcu_incoming_state::local_position_state &local_position)
     {
         accepted_sample converted = {};
 
@@ -331,6 +421,12 @@ namespace
         converted.y_um = static_cast<std::int64_t>(sample.y_mm) * 1000;
         converted.z_um = static_cast<std::int64_t>(sample.z_mm) * 1000;
         converted.confidence_position = quality_factor_to_confidence(sample.quality_factor);
+
+        if (local_position.has_pose == true)
+        {
+            converted.pose_id = local_position.pose_id;
+            converted.branch_id = local_position.branch_id;
+        }
 
         return converted;
     }
@@ -748,6 +844,32 @@ namespace
         return static_cast<std::uint16_t>(median_confidence);
     }
 
+    std::uint16_t calculate_samples_position_confidence(const accepted_sample *samples, std::uint8_t sample_count)
+    {
+        std::int64_t confidence_values[huber_pca_heading_max_sample_count] = {};
+        std::uint8_t confidence_count = 0U;
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            if (samples[index].valid == false)
+            {
+                continue;
+            }
+
+            confidence_values[confidence_count] = static_cast<std::int64_t>(samples[index].confidence_position);
+            confidence_count++;
+        }
+
+        if (confidence_count == 0U)
+        {
+            return 0U;
+        }
+
+        const std::int64_t median_confidence = median_value(confidence_values, confidence_count);
+
+        return static_cast<std::uint16_t>(median_confidence);
+    }
+
     std::int64_t calculate_max_line_error_um(std::uint8_t last_index)
     {
         const accepted_sample newest_sample = history[0U];
@@ -783,7 +905,7 @@ namespace
             const accepted_sample older_sample = history[index];
             const std::uint32_t age_ms = calculate_time_delta_ms(older_sample, newest_sample);
 
-            if (age_ms > heading_max_window_age_ms)
+            if (age_ms > chord_heading_max_window_age_ms)
             {
                 continue;
             }
@@ -797,7 +919,7 @@ namespace
             }
         }
 
-        if (best_distance_um < heading_min_distance_um)
+        if (best_distance_um < chord_heading_min_distance_um)
         {
             return false;
         }
@@ -808,7 +930,66 @@ namespace
         return true;
     }
 
-    void update_heading_from_history()
+    void accept_heading_measurement(const heading_estimate_candidate &candidate)
+    {
+        if (stable.has_heading == false)
+        {
+            stable.has_heading = true;
+            stable.heading_urad = candidate.heading_urad;
+            stable.confidence_heading = candidate.confidence_heading;
+            stable.heading_time_ms = candidate.heading_time_ms;
+            stable.heading_sample_count = candidate.heading_sample_count;
+            stable.heading_distance_um = candidate.heading_distance_um;
+            stable.heading_reference_time_ms = candidate.heading_reference_time_ms;
+            stable.heading_reference_sample_id = candidate.heading_reference_sample_id;
+            stable.heading_estimated_delay_ms = candidate.heading_estimated_delay_ms;
+            stable.heading_reference_pose_id = candidate.heading_reference_pose_id;
+            stable.heading_reference_branch_id = candidate.heading_reference_branch_id;
+            stable.heading_reference_x_um = candidate.heading_reference_x_um;
+            stable.heading_reference_y_um = candidate.heading_reference_y_um;
+            stable.heading_reference_z_um = candidate.heading_reference_z_um;
+            stable.heading_fit_residual_um = candidate.heading_fit_residual_um;
+            stable.huber_pca_used_sample_count = candidate.huber_pca_used_sample_count;
+            stable.huber_pca_median_residual_um = candidate.huber_pca_median_residual_um;
+            stable.huber_pca_max_residual_um = candidate.huber_pca_max_residual_um;
+            stable.huber_pca_movement_distance_um = candidate.huber_pca_movement_distance_um;
+            stable.huber_pca_window_age_ms = candidate.huber_pca_window_age_ms;
+            stable.chord_used_sample_count = candidate.chord_used_sample_count;
+            stable.chord_distance_um = candidate.chord_distance_um;
+            stable.chord_max_line_error_um = candidate.chord_max_line_error_um;
+            stable.chord_window_age_ms = candidate.chord_window_age_ms;
+            return;
+        }
+
+        const std::int32_t difference_urad = normalize_angle_urad(candidate.heading_urad - stable.heading_urad);
+        const std::int32_t step_urad = weighted_heading_step_urad(difference_urad, stable.confidence_heading, candidate.confidence_heading);
+
+        stable.heading_urad = normalize_angle_urad(stable.heading_urad + step_urad);
+        stable.confidence_heading = larger_confidence(stable.confidence_heading, candidate.confidence_heading);
+        stable.heading_time_ms = candidate.heading_time_ms;
+        stable.heading_sample_count = candidate.heading_sample_count;
+        stable.heading_distance_um = candidate.heading_distance_um;
+        stable.heading_reference_time_ms = candidate.heading_reference_time_ms;
+        stable.heading_reference_sample_id = candidate.heading_reference_sample_id;
+        stable.heading_estimated_delay_ms = candidate.heading_estimated_delay_ms;
+        stable.heading_reference_pose_id = candidate.heading_reference_pose_id;
+        stable.heading_reference_branch_id = candidate.heading_reference_branch_id;
+        stable.heading_reference_x_um = candidate.heading_reference_x_um;
+        stable.heading_reference_y_um = candidate.heading_reference_y_um;
+        stable.heading_reference_z_um = candidate.heading_reference_z_um;
+        stable.heading_fit_residual_um = candidate.heading_fit_residual_um;
+        stable.huber_pca_used_sample_count = candidate.huber_pca_used_sample_count;
+        stable.huber_pca_median_residual_um = candidate.huber_pca_median_residual_um;
+        stable.huber_pca_max_residual_um = candidate.huber_pca_max_residual_um;
+        stable.huber_pca_movement_distance_um = candidate.huber_pca_movement_distance_um;
+        stable.huber_pca_window_age_ms = candidate.huber_pca_window_age_ms;
+        stable.chord_used_sample_count = candidate.chord_used_sample_count;
+        stable.chord_distance_um = candidate.chord_distance_um;
+        stable.chord_max_line_error_um = candidate.chord_max_line_error_um;
+        stable.chord_window_age_ms = candidate.chord_window_age_ms;
+    }
+
+    void update_heading_from_history_chord()
     {
         std::uint8_t oldest_index = 0U;
         std::int64_t heading_distance_um = 0;
@@ -827,9 +1008,9 @@ namespace
         const std::int32_t measured_heading_urad = normalize_angle_urad(static_cast<std::int32_t>(std::llround(heading_rad * 1000000.0)));
         const std::uint8_t sample_count = static_cast<std::uint8_t>(oldest_index + 1U);
         const std::int64_t max_line_error_um = calculate_max_line_error_um(oldest_index);
-        const std::uint16_t distance_confidence = growth_to_confidence(heading_distance_um, heading_min_distance_um, heading_full_distance_um);
+        const std::uint16_t distance_confidence = growth_to_confidence(heading_distance_um, chord_heading_min_distance_um, chord_heading_full_distance_um);
         const std::uint16_t count_confidence = sample_count_to_confidence(sample_count);
-        const std::uint16_t line_confidence = range_to_confidence(max_line_error_um, heading_good_line_error_um, heading_zero_line_error_um);
+        const std::uint16_t line_confidence = range_to_confidence(max_line_error_um, chord_heading_good_line_error_um, chord_heading_zero_line_error_um);
         const std::uint16_t position_confidence = calculate_window_position_confidence(oldest_index);
         std::uint16_t measured_confidence = distance_confidence;
 
@@ -842,25 +1023,324 @@ namespace
             return;
         }
 
-        if (stable.has_heading == false)
+        heading_estimate_candidate candidate = {};
+
+        candidate.heading_urad = measured_heading_urad;
+        candidate.confidence_heading = measured_confidence;
+        candidate.heading_time_ms = newest_sample.received_time_ms;
+        candidate.heading_sample_count = sample_count;
+        candidate.heading_distance_um = heading_distance_um;
+        candidate.heading_reference_time_ms = newest_sample.received_time_ms;
+        candidate.heading_reference_sample_id = newest_sample.sample_id;
+        candidate.heading_estimated_delay_ms = 0U;
+        candidate.heading_reference_pose_id = newest_sample.pose_id;
+        candidate.heading_reference_branch_id = newest_sample.branch_id;
+        candidate.heading_reference_x_um = newest_sample.x_um;
+        candidate.heading_reference_y_um = newest_sample.y_um;
+        candidate.heading_reference_z_um = newest_sample.z_um;
+        candidate.heading_fit_residual_um = static_cast<std::uint32_t>(max_line_error_um);
+        candidate.chord_used_sample_count = sample_count;
+        candidate.chord_distance_um = heading_distance_um;
+        candidate.chord_max_line_error_um = max_line_error_um;
+        candidate.chord_window_age_ms = calculate_time_delta_ms(oldest_sample, newest_sample);
+        accept_heading_measurement(candidate);
+    }
+
+    std::uint8_t collect_huber_pca_heading_samples(accepted_sample *samples_out)
+    {
+        if (history_count == 0U)
         {
-            stable.has_heading = true;
-            stable.heading_urad = measured_heading_urad;
-            stable.confidence_heading = measured_confidence;
-            stable.heading_time_ms = newest_sample.received_time_ms;
-            stable.heading_sample_count = sample_count;
-            stable.heading_distance_um = heading_distance_um;
+            return 0U;
+        }
+
+        const accepted_sample newest_sample = history[0U];
+        std::uint8_t sample_count = 0U;
+
+        for (std::uint8_t index = 0U; index < history_count; index++)
+        {
+            const accepted_sample sample = history[index];
+
+            if (sample.valid == false)
+            {
+                continue;
+            }
+
+            const std::uint32_t age_ms = calculate_time_delta_ms(sample, newest_sample);
+
+            if (age_ms > huber_pca_heading_max_age_ms)
+            {
+                continue;
+            }
+
+            samples_out[sample_count] = sample;
+            sample_count++;
+
+            if (sample_count >= huber_pca_heading_max_sample_count)
+            {
+                return sample_count;
+            }
+        }
+
+        return sample_count;
+    }
+
+    std::uint8_t find_huber_pca_reference_index(const accepted_sample *samples, std::uint8_t sample_count)
+    {
+        const accepted_sample newest_sample = samples[0U];
+        const std::uint32_t target_time_ms = newest_sample.received_time_ms > huber_pca_heading_estimated_delay_ms ? newest_sample.received_time_ms - huber_pca_heading_estimated_delay_ms : 0U;
+        std::uint8_t reference_index = 0U;
+        std::uint32_t best_error_ms = UINT32_MAX;
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            const std::uint32_t error_ms = absolute_time_difference_ms(samples[index].received_time_ms, target_time_ms);
+
+            if (error_ms < best_error_ms)
+            {
+                best_error_ms = error_ms;
+                reference_index = index;
+            }
+        }
+
+        return reference_index;
+    }
+
+    bool update_huber_pca_iteration(const accepted_sample *samples, std::uint8_t sample_count, std::uint16_t *weights, std::uint32_t *residuals_um, double &direction_x, double &direction_y)
+    {
+        double weight_sum = 0.0;
+        double center_x = 0.0;
+        double center_y = 0.0;
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            const double weight = static_cast<double>(weights[index]);
+            center_x += weight * static_cast<double>(samples[index].x_um);
+            center_y += weight * static_cast<double>(samples[index].y_um);
+            weight_sum += weight;
+        }
+
+        if (weight_sum <= 0.0)
+        {
+            return false;
+        }
+
+        center_x /= weight_sum;
+        center_y /= weight_sum;
+
+        double xx = 0.0;
+        double xy = 0.0;
+        double yy = 0.0;
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            const double weight = static_cast<double>(weights[index]);
+            const double dx = static_cast<double>(samples[index].x_um) - center_x;
+            const double dy = static_cast<double>(samples[index].y_um) - center_y;
+
+            xx += weight * dx * dx;
+            xy += weight * dx * dy;
+            yy += weight * dy * dy;
+        }
+
+        xx /= weight_sum;
+        xy /= weight_sum;
+        yy /= weight_sum;
+
+        if ((xx == 0.0) && (xy == 0.0) && (yy == 0.0))
+        {
+            return false;
+        }
+
+        const double line_angle_rad = 0.5 * std::atan2(2.0 * xy, xx - yy);
+
+        direction_x = std::cos(line_angle_rad);
+        direction_y = std::sin(line_angle_rad);
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            const double dx = static_cast<double>(samples[index].x_um) - center_x;
+            const double dy = static_cast<double>(samples[index].y_um) - center_y;
+            const double residual_double = std::fabs((dx * direction_y) - (dy * direction_x));
+            std::uint32_t residual_um = static_cast<std::uint32_t>(std::llround(residual_double));
+
+            residuals_um[index] = residual_um;
+
+            std::uint32_t robust_weight = full_confidence;
+
+            if (residual_um > huber_pca_delta_um)
+            {
+                robust_weight = huber_pca_delta_um * static_cast<std::uint32_t>(full_confidence) / residual_um;
+
+                if (robust_weight == 0U)
+                {
+                    robust_weight = 1U;
+                }
+            }
+
+            std::uint32_t confidence = samples[index].confidence_position;
+
+            if (confidence == 0U)
+            {
+                confidence = 1U;
+            }
+
+            std::uint32_t combined_weight = confidence * robust_weight / static_cast<std::uint32_t>(full_confidence);
+
+            if (combined_weight == 0U)
+            {
+                combined_weight = 1U;
+            }
+
+            if (combined_weight > full_confidence)
+            {
+                combined_weight = full_confidence;
+            }
+
+            weights[index] = static_cast<std::uint16_t>(combined_weight);
+        }
+
+        return true;
+    }
+
+    std::uint32_t calculate_median_residual_um(const std::uint32_t *residuals_um, std::uint8_t sample_count)
+    {
+        std::int64_t values[huber_pca_heading_max_sample_count] = {};
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            values[index] = static_cast<std::int64_t>(residuals_um[index]);
+        }
+
+        return static_cast<std::uint32_t>(median_value(values, sample_count));
+    }
+
+    std::uint32_t calculate_max_residual_um(const std::uint32_t *residuals_um, std::uint8_t sample_count)
+    {
+        std::uint32_t max_residual_um = 0U;
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            if (residuals_um[index] > max_residual_um)
+            {
+                max_residual_um = residuals_um[index];
+            }
+        }
+
+        return max_residual_um;
+    }
+
+    void update_heading_from_history_huber_pca()
+    {
+        accepted_sample samples[huber_pca_heading_max_sample_count] = {};
+        const std::uint8_t sample_count = collect_huber_pca_heading_samples(samples);
+
+        if (sample_count < huber_pca_heading_min_sample_count)
+        {
             return;
         }
 
-        const std::int32_t difference_urad = normalize_angle_urad(measured_heading_urad - stable.heading_urad);
-        const std::int32_t step_urad = weighted_heading_step_urad(difference_urad, stable.confidence_heading, measured_confidence);
+        const accepted_sample newest_sample = samples[0U];
+        const accepted_sample oldest_sample = samples[sample_count - 1U];
+        const std::int64_t movement_x_um = newest_sample.x_um - oldest_sample.x_um;
+        const std::int64_t movement_y_um = newest_sample.y_um - oldest_sample.y_um;
+        const std::int64_t movement_distance_um = calculate_distance_um(movement_x_um, movement_y_um);
 
-        stable.heading_urad = normalize_angle_urad(stable.heading_urad + step_urad);
-        stable.confidence_heading = larger_confidence(stable.confidence_heading, measured_confidence);
-        stable.heading_time_ms = newest_sample.received_time_ms;
-        stable.heading_sample_count = sample_count;
-        stable.heading_distance_um = heading_distance_um;
+        if (movement_distance_um < huber_pca_heading_min_distance_um)
+        {
+            return;
+        }
+
+        std::uint16_t weights[huber_pca_heading_max_sample_count] = {};
+        std::uint32_t residuals_um[huber_pca_heading_max_sample_count] = {};
+        double direction_x = 1.0;
+        double direction_y = 0.0;
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            weights[index] = samples[index].confidence_position;
+
+            if (weights[index] == 0U)
+            {
+                weights[index] = 1U;
+            }
+        }
+
+        for (std::uint8_t iteration = 0U; iteration < huber_pca_iteration_count; iteration++)
+        {
+            const bool fitted = update_huber_pca_iteration(samples, sample_count, weights, residuals_um, direction_x, direction_y);
+
+            if (fitted == false)
+            {
+                return;
+            }
+        }
+
+        const double dot = (direction_x * static_cast<double>(movement_x_um)) + (direction_y * static_cast<double>(movement_y_um));
+
+        if (dot < 0.0)
+        {
+            direction_x = -direction_x;
+            direction_y = -direction_y;
+        }
+
+        const double heading_rad = std::atan2(direction_y, direction_x);
+        const std::int32_t measured_heading_urad = normalize_angle_urad(static_cast<std::int32_t>(std::llround(heading_rad * 1000000.0)));
+        const std::uint32_t median_residual_um = calculate_median_residual_um(residuals_um, sample_count);
+        const std::uint32_t max_residual_um = calculate_max_residual_um(residuals_um, sample_count);
+        const std::uint16_t distance_confidence = growth_to_confidence(movement_distance_um, huber_pca_heading_min_distance_um, huber_pca_heading_full_distance_um);
+        const std::uint16_t count_confidence = sample_count_to_confidence(sample_count, huber_pca_heading_min_sample_count, huber_pca_heading_full_sample_count);
+        const std::uint16_t residual_confidence = range_to_confidence(median_residual_um, huber_pca_good_residual_um, huber_pca_zero_residual_um);
+        const std::uint16_t position_confidence = calculate_samples_position_confidence(samples, sample_count);
+        std::uint16_t measured_confidence = distance_confidence;
+
+        measured_confidence = smaller_confidence(measured_confidence, count_confidence);
+        measured_confidence = smaller_confidence(measured_confidence, residual_confidence);
+        measured_confidence = smaller_confidence(measured_confidence, position_confidence);
+
+        if (measured_confidence < minimum_accepted_confidence)
+        {
+            return;
+        }
+
+        const std::uint8_t reference_index = find_huber_pca_reference_index(samples, sample_count);
+        const accepted_sample reference_sample = samples[reference_index];
+        heading_estimate_candidate candidate = {};
+
+        candidate.heading_urad = measured_heading_urad;
+        candidate.confidence_heading = measured_confidence;
+        candidate.heading_time_ms = newest_sample.received_time_ms;
+        candidate.heading_sample_count = sample_count;
+        candidate.heading_distance_um = movement_distance_um;
+        candidate.heading_reference_time_ms = reference_sample.received_time_ms;
+        candidate.heading_reference_sample_id = reference_sample.sample_id;
+        candidate.heading_estimated_delay_ms = huber_pca_heading_estimated_delay_ms;
+        candidate.heading_reference_pose_id = reference_sample.pose_id;
+        candidate.heading_reference_branch_id = reference_sample.branch_id;
+        candidate.heading_reference_x_um = reference_sample.x_um;
+        candidate.heading_reference_y_um = reference_sample.y_um;
+        candidate.heading_reference_z_um = reference_sample.z_um;
+        candidate.heading_fit_residual_um = median_residual_um;
+        candidate.huber_pca_used_sample_count = sample_count;
+        candidate.huber_pca_median_residual_um = median_residual_um;
+        candidate.huber_pca_max_residual_um = max_residual_um;
+        candidate.huber_pca_movement_distance_um = static_cast<std::uint32_t>(movement_distance_um);
+        candidate.huber_pca_window_age_ms = calculate_time_delta_ms(oldest_sample, newest_sample);
+        accept_heading_measurement(candidate);
+    }
+
+    void update_heading_from_history()
+    {
+        if (global_heading_mode == filtered_global_position::filtered_global_heading_mode::chord)
+        {
+            update_heading_from_history_chord();
+            return;
+        }
+
+        if (global_heading_mode == filtered_global_position::filtered_global_heading_mode::huber_pca)
+        {
+            update_heading_from_history_huber_pca();
+            return;
+        }
     }
 
     void accept_initial_sample(const accepted_sample &sample)
@@ -914,6 +1394,7 @@ namespace
         output.raw_confidence_position = raw_confidence;
         output.history_confidence = history_confidence;
         output.accepted_sample_count = history_count;
+        output.heading_mode = static_cast<std::uint8_t>(global_heading_mode);
         output.sample_id = sample.sample_id;
         output.request_id = sample.request_id;
         output.received_time_ms = sample.received_time_ms;
@@ -940,6 +1421,24 @@ namespace
             output.confidence_heading = multiply_confidence(stable.confidence_heading, age_confidence);
             output.heading_sample_count = stable.heading_sample_count;
             output.heading_distance_um = stable.heading_distance_um;
+            output.heading_reference_time_ms = stable.heading_reference_time_ms;
+            output.heading_reference_sample_id = stable.heading_reference_sample_id;
+            output.heading_estimated_delay_ms = stable.heading_estimated_delay_ms;
+            output.heading_reference_pose_id = stable.heading_reference_pose_id;
+            output.heading_reference_branch_id = stable.heading_reference_branch_id;
+            output.heading_reference_x_um = stable.heading_reference_x_um;
+            output.heading_reference_y_um = stable.heading_reference_y_um;
+            output.heading_reference_z_um = stable.heading_reference_z_um;
+            output.heading_fit_residual_um = stable.heading_fit_residual_um;
+            output.huber_pca_used_sample_count = stable.huber_pca_used_sample_count;
+            output.huber_pca_median_residual_um = stable.huber_pca_median_residual_um;
+            output.huber_pca_max_residual_um = stable.huber_pca_max_residual_um;
+            output.huber_pca_movement_distance_um = stable.huber_pca_movement_distance_um;
+            output.huber_pca_window_age_ms = stable.huber_pca_window_age_ms;
+            output.chord_used_sample_count = stable.chord_used_sample_count;
+            output.chord_distance_um = stable.chord_distance_um;
+            output.chord_max_line_error_um = stable.chord_max_line_error_um;
+            output.chord_window_age_ms = stable.chord_window_age_ms;
         }
 
         latest_output = output;
@@ -951,9 +1450,9 @@ namespace
         return build_output(now_ms, true, false, true, sample, raw_confidence, history_confidence);
     }
 
-    filtered_global_position::output_snapshot process_new_sample(std::uint32_t now_ms, const global_position_api::global_position_sample &api_sample)
+    filtered_global_position::output_snapshot process_new_sample(std::uint32_t now_ms, const global_position_api::global_position_sample &api_sample, const motion_mcu_incoming_state::local_position_state &local_position)
     {
-        const accepted_sample sample = convert_sample(api_sample);
+        const accepted_sample sample = convert_sample(api_sample, local_position);
         const std::uint16_t raw_confidence = sample.confidence_position;
 
         last_sample_id = sample.sample_id;
@@ -1023,7 +1522,7 @@ namespace filtered_global_position
         last_sample_id = 0U;
     }
 
-    output_snapshot update(std::uint32_t now_ms)
+    output_snapshot update(std::uint32_t now_ms, const motion_mcu_incoming_state::local_position_state &local_position)
     {
         global_position_api::global_position_sample api_sample = {};
         const bool has_sample = global_position_api::read_sample(api_sample);
@@ -1053,7 +1552,7 @@ namespace filtered_global_position
             return build_output(now_ms, false, false, false, latest_sample, latest_sample.confidence_position, latest_output.history_confidence);
         }
 
-        return process_new_sample(now_ms, api_sample);
+        return process_new_sample(now_ms, api_sample, local_position);
     }
 
     output_snapshot read_output(std::uint32_t now_ms)

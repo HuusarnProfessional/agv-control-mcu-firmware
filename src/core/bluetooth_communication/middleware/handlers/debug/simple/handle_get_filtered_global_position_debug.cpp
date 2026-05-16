@@ -66,7 +66,7 @@ namespace debug_handlers
         const std::uint32_t now_ms = static_cast<std::uint32_t>(millis());
         const filtered_global_position::output_snapshot state = filtered_global_position::read_output(now_ms);
 
-        char response[768] = {};
+        char response[1600] = {};
         std::size_t offset = 0U;
         bool formatted = true;
 
@@ -87,6 +87,25 @@ namespace debug_handlers
         append_debug_field(formatted, response, sizeof(response), offset, " accepted_sample_count %u", static_cast<unsigned>(state.accepted_sample_count));
         append_debug_field(formatted, response, sizeof(response), offset, " heading_sample_count %u", static_cast<unsigned>(state.heading_sample_count));
         append_debug_field(formatted, response, sizeof(response), offset, " heading_distance_um %lld", static_cast<long long>(state.heading_distance_um));
+        append_debug_field(formatted, response, sizeof(response), offset, " heading_mode %u", static_cast<unsigned>(state.heading_mode));
+        append_debug_field(formatted, response, sizeof(response), offset, " heading_reference_time_ms %lu", static_cast<unsigned long>(state.heading_reference_time_ms));
+        append_debug_field(formatted, response, sizeof(response), offset, " heading_reference_sample_id %lu", static_cast<unsigned long>(state.heading_reference_sample_id));
+        append_debug_field(formatted, response, sizeof(response), offset, " heading_estimated_delay_ms %lu", static_cast<unsigned long>(state.heading_estimated_delay_ms));
+        append_debug_field(formatted, response, sizeof(response), offset, " heading_reference_pose_id %u", static_cast<unsigned>(state.heading_reference_pose_id));
+        append_debug_field(formatted, response, sizeof(response), offset, " heading_reference_branch_id %u", static_cast<unsigned>(state.heading_reference_branch_id));
+        append_debug_field(formatted, response, sizeof(response), offset, " heading_reference_x_um %lld", static_cast<long long>(state.heading_reference_x_um));
+        append_debug_field(formatted, response, sizeof(response), offset, " heading_reference_y_um %lld", static_cast<long long>(state.heading_reference_y_um));
+        append_debug_field(formatted, response, sizeof(response), offset, " heading_reference_z_um %lld", static_cast<long long>(state.heading_reference_z_um));
+        append_debug_field(formatted, response, sizeof(response), offset, " heading_fit_residual_um %lu", static_cast<unsigned long>(state.heading_fit_residual_um));
+        append_debug_field(formatted, response, sizeof(response), offset, " huber_pca_used_sample_count %u", static_cast<unsigned>(state.huber_pca_used_sample_count));
+        append_debug_field(formatted, response, sizeof(response), offset, " huber_pca_median_residual_um %lu", static_cast<unsigned long>(state.huber_pca_median_residual_um));
+        append_debug_field(formatted, response, sizeof(response), offset, " huber_pca_max_residual_um %lu", static_cast<unsigned long>(state.huber_pca_max_residual_um));
+        append_debug_field(formatted, response, sizeof(response), offset, " huber_pca_movement_distance_um %lu", static_cast<unsigned long>(state.huber_pca_movement_distance_um));
+        append_debug_field(formatted, response, sizeof(response), offset, " huber_pca_window_age_ms %lu", static_cast<unsigned long>(state.huber_pca_window_age_ms));
+        append_debug_field(formatted, response, sizeof(response), offset, " chord_used_sample_count %u", static_cast<unsigned>(state.chord_used_sample_count));
+        append_debug_field(formatted, response, sizeof(response), offset, " chord_distance_um %lld", static_cast<long long>(state.chord_distance_um));
+        append_debug_field(formatted, response, sizeof(response), offset, " chord_max_line_error_um %lld", static_cast<long long>(state.chord_max_line_error_um));
+        append_debug_field(formatted, response, sizeof(response), offset, " chord_window_age_ms %lu", static_cast<unsigned long>(state.chord_window_age_ms));
         append_debug_field(formatted, response, sizeof(response), offset, " sample_id %lu", static_cast<unsigned long>(state.sample_id));
         append_debug_field(formatted, response, sizeof(response), offset, " request_id %lu", static_cast<unsigned long>(state.request_id));
         append_debug_field(formatted, response, sizeof(response), offset, " received_time_ms %lu", static_cast<unsigned long>(state.received_time_ms));

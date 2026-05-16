@@ -11,6 +11,7 @@ namespace
     constexpr std::uint32_t minimum_request_interval_ms = 1000U;
     constexpr std::uint32_t pending_request_timeout_ms = 3000U;
     constexpr std::uint32_t settling_time_ms = 500U;
+    constexpr std::uint16_t maximum_reference_pose_age_steps = 2048U;
 
     struct pending_reference_state
     {
@@ -103,6 +104,11 @@ namespace
             return false;
         }
 
+        if (global_position.heading_reference_pose_id == 0U)
+        {
+            return false;
+        }
+
         return true;
     }
 
@@ -187,6 +193,41 @@ namespace
         last_request_score = reference_score;
     }
 
+    std::uint16_t calculate_pose_age_steps(std::uint16_t current_pose_id, std::uint16_t reference_pose_id)
+    {
+        return static_cast<std::uint16_t>(current_pose_id - reference_pose_id);
+    }
+
+    bool global_reference_pose_can_be_replayed(const motion_mcu_incoming_state::local_position_state &local_position, const filtered_global_position::output_snapshot &global_position)
+    {
+        if (global_position.heading_reference_branch_id != local_position.branch_id)
+        {
+            return false;
+        }
+
+        const std::uint16_t pose_age_steps = calculate_pose_age_steps(local_position.pose_id, global_position.heading_reference_pose_id);
+
+        if (pose_age_steps > maximum_reference_pose_age_steps)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    filtered_global_position::output_snapshot build_anchor_reference(const filtered_global_position::output_snapshot &global_position)
+    {
+        filtered_global_position::output_snapshot anchor_reference = global_position;
+
+        anchor_reference.x_um = global_position.heading_reference_x_um;
+        anchor_reference.y_um = global_position.heading_reference_y_um;
+        anchor_reference.z_um = global_position.heading_reference_z_um;
+        anchor_reference.sample_id = global_position.heading_reference_sample_id;
+        anchor_reference.received_time_ms = global_position.heading_reference_time_ms;
+
+        return anchor_reference;
+    }
+
     global_reference_selector::reference_activation build_initial_activation(const motion_mcu_incoming_state::local_position_state &local_position, const filtered_global_position::output_snapshot &global_position, std::uint16_t reference_score, std::uint32_t now_ms)
     {
         global_reference_selector::reference_activation activation = {};
@@ -203,7 +244,7 @@ namespace
         activation.source_branch_id = local_position.branch_id;
         activation.activation_time_ms = now_ms;
         activation.reference_score = reference_score;
-        activation.global_reference = global_position;
+        activation.global_reference = build_anchor_reference(global_position);
 
         return activation;
     }
@@ -237,18 +278,23 @@ namespace
             return request;
         }
 
+        if (global_reference_pose_can_be_replayed(local_position, global_position) == false)
+        {
+            return request;
+        }
+
         pending_reference.pending = true;
-        pending_reference.source_pose_id = local_position.pose_id;
-        pending_reference.source_branch_id = local_position.branch_id;
+        pending_reference.source_pose_id = global_position.heading_reference_pose_id;
+        pending_reference.source_branch_id = global_position.heading_reference_branch_id;
         pending_reference.request_time_ms = now_ms;
         pending_reference.reference_score = reference_score;
-        pending_reference.global_reference = global_position;
+        pending_reference.global_reference = build_anchor_reference(global_position);
 
         mark_last_request(global_position, reference_score, now_ms);
 
         request.has_request = true;
-        request.pose_id = local_position.pose_id;
-        request.branch_id = local_position.branch_id;
+        request.pose_id = pending_reference.source_pose_id;
+        request.branch_id = pending_reference.source_branch_id;
         request.reference_score = reference_score;
 
         return request;
@@ -354,7 +400,18 @@ namespace global_reference_selector
 
         if (current_reference.has_reference == false)
         {
-            output.activation = build_initial_activation(local_position, global_position, global_reference_score, now_ms);
+            if ((global_position.heading_reference_pose_id == local_position.pose_id) && (global_position.heading_reference_branch_id == local_position.branch_id))
+            {
+                output.activation = build_initial_activation(local_position, global_position, global_reference_score, now_ms);
+                latest_output = output;
+                return latest_output;
+            }
+
+            output.request = start_pending_request(local_position, global_position, global_reference_score, now_ms);
+            output.pending = pending_reference.pending;
+            output.pending_pose_id = pending_reference.source_pose_id;
+            output.pending_branch_id = pending_reference.source_branch_id;
+            output.pending_global_sample_id = pending_reference.global_reference.sample_id;
             latest_output = output;
             return latest_output;
         }
