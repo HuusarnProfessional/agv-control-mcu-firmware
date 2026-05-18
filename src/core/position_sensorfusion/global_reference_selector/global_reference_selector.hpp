@@ -10,9 +10,9 @@ namespace global_reference_selector
     struct current_reference_snapshot
     {
         bool has_reference = false;
-        std::uint16_t confidence_position = 0U;
-        std::uint16_t confidence_heading = 0U;
+        bool has_heading = false;
         std::uint8_t branch_id = 0U;
+        std::int32_t heading_urad = 0;
     };
 
     struct branch_request
@@ -20,7 +20,7 @@ namespace global_reference_selector
         bool has_request = false;
         std::uint16_t pose_id = 0U;
         std::uint8_t branch_id = 0U;
-        std::uint16_t reference_score = 0U;
+        std::uint16_t reference_confidence = 0U;
     };
 
     struct reference_activation
@@ -31,7 +31,7 @@ namespace global_reference_selector
         std::uint16_t source_pose_id = 0U;
         std::uint8_t source_branch_id = 0U;
         std::uint32_t activation_time_ms = 0U;
-        std::uint16_t reference_score = 0U;
+        std::uint16_t reference_confidence = 0U;
         filtered_global_position::output_snapshot global_reference = {};
     };
 
@@ -45,8 +45,17 @@ namespace global_reference_selector
         std::uint16_t pending_pose_id = 0U;
         std::uint8_t pending_branch_id = 0U;
         std::uint32_t pending_global_sample_id = 0U;
-        std::uint16_t global_reference_score = 0U;
-        std::uint16_t current_reference_score = 0U;
+        std::uint16_t local_position_confidence = 0U;
+        std::uint16_t local_heading_confidence = 0U;
+        std::uint16_t local_reference_confidence = 0U;
+        std::uint16_t candidate_anchor_position_confidence = 0U;
+        std::uint16_t candidate_anchor_heading_confidence = 0U;
+        std::uint16_t candidate_anchor_adjusted_heading_confidence = 0U;
+        std::uint16_t candidate_anchor_confidence = 0U;
+        std::int32_t candidate_anchor_heading_delta_urad = 0;
+        bool candidate_anchor_heading_consistent = false;
+        std::uint16_t required_anchor_confidence = 0U;
+        std::uint8_t request_reason = 0U;
     };
 
     void init();

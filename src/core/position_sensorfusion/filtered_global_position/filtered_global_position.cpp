@@ -44,6 +44,7 @@ namespace
 
     constexpr std::uint32_t huber_pca_heading_max_age_ms = 2500U;
     constexpr std::uint32_t huber_pca_heading_estimated_delay_ms = 1300U;
+    constexpr std::uint32_t huber_pca_heading_reference_window_ms = 900U;
     constexpr std::int64_t huber_pca_heading_min_distance_um = 300000;
     constexpr std::int64_t huber_pca_heading_full_distance_um = 900000;
     constexpr std::uint8_t huber_pca_heading_min_sample_count = 6U;
@@ -53,6 +54,7 @@ namespace
     constexpr std::uint32_t huber_pca_good_residual_um = 20000U;
     constexpr std::uint32_t huber_pca_zero_residual_um = 120000U;
     constexpr std::uint8_t huber_pca_iteration_count = 6U;
+    constexpr std::uint16_t candidate_anchor_heading_confidence_gain_permille = 3500U;
 
     constexpr std::uint32_t position_confidence_full_age_ms = 250U;
     constexpr std::uint32_t position_confidence_zero_age_ms = 2500U;
@@ -69,6 +71,7 @@ namespace
         std::int64_t y_um = 0;
         std::int64_t z_um = 0;
         std::uint16_t confidence_position = 0U;
+        bool has_local_reference = false;
         std::uint16_t pose_id = 0U;
         std::uint8_t branch_id = 0U;
     };
@@ -97,6 +100,10 @@ namespace
         std::int64_t heading_reference_y_um = 0;
         std::int64_t heading_reference_z_um = 0;
         std::uint32_t heading_fit_residual_um = 0U;
+        std::uint16_t candidate_anchor_position_confidence = 0U;
+        std::uint16_t candidate_anchor_heading_confidence = 0U;
+        std::uint16_t candidate_anchor_adjusted_heading_confidence = 0U;
+        std::uint16_t candidate_anchor_confidence = 0U;
         std::uint8_t huber_pca_used_sample_count = 0U;
         std::uint32_t huber_pca_median_residual_um = 0U;
         std::uint32_t huber_pca_max_residual_um = 0U;
@@ -124,6 +131,10 @@ namespace
         std::int64_t heading_reference_y_um = 0;
         std::int64_t heading_reference_z_um = 0;
         std::uint32_t heading_fit_residual_um = 0U;
+        std::uint16_t candidate_anchor_position_confidence = 0U;
+        std::uint16_t candidate_anchor_heading_confidence = 0U;
+        std::uint16_t candidate_anchor_adjusted_heading_confidence = 0U;
+        std::uint16_t candidate_anchor_confidence = 0U;
         std::uint8_t huber_pca_used_sample_count = 0U;
         std::uint32_t huber_pca_median_residual_um = 0U;
         std::uint32_t huber_pca_max_residual_um = 0U;
@@ -208,6 +219,18 @@ namespace
         const std::uint32_t scaled = multiplied / full_confidence;
 
         return static_cast<std::uint16_t>(scaled);
+    }
+
+    std::uint16_t apply_confidence_gain(std::uint16_t confidence, std::uint16_t gain_permille)
+    {
+        const std::uint32_t gained_confidence = static_cast<std::uint32_t>(confidence) * static_cast<std::uint32_t>(gain_permille) / 1000U;
+
+        if (gained_confidence > full_confidence)
+        {
+            return full_confidence;
+        }
+
+        return static_cast<std::uint16_t>(gained_confidence);
     }
 
     std::uint16_t quality_factor_to_confidence(std::uint8_t quality_factor)
@@ -422,8 +445,9 @@ namespace
         converted.z_um = static_cast<std::int64_t>(sample.z_mm) * 1000;
         converted.confidence_position = quality_factor_to_confidence(sample.quality_factor);
 
-        if (local_position.has_pose == true)
+        if ((local_position.has_pose == true) && (local_position.branch_id <= 1U) && (local_position.pose_id != 0U))
         {
+            converted.has_local_reference = true;
             converted.pose_id = local_position.pose_id;
             converted.branch_id = local_position.branch_id;
         }
@@ -949,6 +973,10 @@ namespace
             stable.heading_reference_y_um = candidate.heading_reference_y_um;
             stable.heading_reference_z_um = candidate.heading_reference_z_um;
             stable.heading_fit_residual_um = candidate.heading_fit_residual_um;
+            stable.candidate_anchor_position_confidence = candidate.candidate_anchor_position_confidence;
+            stable.candidate_anchor_heading_confidence = candidate.candidate_anchor_heading_confidence;
+            stable.candidate_anchor_adjusted_heading_confidence = candidate.candidate_anchor_adjusted_heading_confidence;
+            stable.candidate_anchor_confidence = candidate.candidate_anchor_confidence;
             stable.huber_pca_used_sample_count = candidate.huber_pca_used_sample_count;
             stable.huber_pca_median_residual_um = candidate.huber_pca_median_residual_um;
             stable.huber_pca_max_residual_um = candidate.huber_pca_max_residual_um;
@@ -978,6 +1006,10 @@ namespace
         stable.heading_reference_y_um = candidate.heading_reference_y_um;
         stable.heading_reference_z_um = candidate.heading_reference_z_um;
         stable.heading_fit_residual_um = candidate.heading_fit_residual_um;
+        stable.candidate_anchor_position_confidence = candidate.candidate_anchor_position_confidence;
+        stable.candidate_anchor_heading_confidence = candidate.candidate_anchor_heading_confidence;
+        stable.candidate_anchor_adjusted_heading_confidence = candidate.candidate_anchor_adjusted_heading_confidence;
+        stable.candidate_anchor_confidence = candidate.candidate_anchor_confidence;
         stable.huber_pca_used_sample_count = candidate.huber_pca_used_sample_count;
         stable.huber_pca_median_residual_um = candidate.huber_pca_median_residual_um;
         stable.huber_pca_max_residual_um = candidate.huber_pca_max_residual_um;
@@ -1033,12 +1065,20 @@ namespace
         candidate.heading_reference_time_ms = newest_sample.received_time_ms;
         candidate.heading_reference_sample_id = newest_sample.sample_id;
         candidate.heading_estimated_delay_ms = 0U;
-        candidate.heading_reference_pose_id = newest_sample.pose_id;
-        candidate.heading_reference_branch_id = newest_sample.branch_id;
+        if (newest_sample.has_local_reference == true)
+        {
+            candidate.heading_reference_pose_id = newest_sample.pose_id;
+            candidate.heading_reference_branch_id = newest_sample.branch_id;
+        }
+
         candidate.heading_reference_x_um = newest_sample.x_um;
         candidate.heading_reference_y_um = newest_sample.y_um;
         candidate.heading_reference_z_um = newest_sample.z_um;
         candidate.heading_fit_residual_um = static_cast<std::uint32_t>(max_line_error_um);
+        candidate.candidate_anchor_position_confidence = newest_sample.confidence_position;
+        candidate.candidate_anchor_heading_confidence = measured_confidence;
+        candidate.candidate_anchor_adjusted_heading_confidence = apply_confidence_gain(measured_confidence, candidate_anchor_heading_confidence_gain_permille);
+        candidate.candidate_anchor_confidence = smaller_confidence(candidate.candidate_anchor_position_confidence, candidate.candidate_anchor_adjusted_heading_confidence);
         candidate.chord_used_sample_count = sample_count;
         candidate.chord_distance_um = heading_distance_um;
         candidate.chord_max_line_error_um = max_line_error_um;
@@ -1090,19 +1130,57 @@ namespace
         const std::uint32_t target_time_ms = newest_sample.received_time_ms > huber_pca_heading_estimated_delay_ms ? newest_sample.received_time_ms - huber_pca_heading_estimated_delay_ms : 0U;
         std::uint8_t reference_index = 0U;
         std::uint32_t best_error_ms = UINT32_MAX;
+        bool has_reference_sample = false;
 
         for (std::uint8_t index = 0U; index < sample_count; index++)
         {
+            if (samples[index].has_local_reference == false)
+            {
+                continue;
+            }
+
             const std::uint32_t error_ms = absolute_time_difference_ms(samples[index].received_time_ms, target_time_ms);
 
             if (error_ms < best_error_ms)
             {
                 best_error_ms = error_ms;
                 reference_index = index;
+                has_reference_sample = true;
             }
         }
 
+        if (has_reference_sample == false)
+        {
+            return 0U;
+        }
+
         return reference_index;
+    }
+
+    std::uint8_t collect_huber_pca_reference_window_samples(const accepted_sample *samples, std::uint8_t sample_count, std::uint8_t reference_index, accepted_sample *samples_out)
+    {
+        const accepted_sample reference_sample = samples[reference_index];
+        std::uint8_t output_count = 0U;
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            const std::uint32_t time_error_ms = absolute_time_difference_ms(samples[index].received_time_ms, reference_sample.received_time_ms);
+
+            if (time_error_ms > huber_pca_heading_reference_window_ms)
+            {
+                continue;
+            }
+
+            samples_out[output_count] = samples[index];
+            output_count++;
+
+            if (output_count >= huber_pca_heading_max_sample_count)
+            {
+                return output_count;
+            }
+        }
+
+        return output_count;
     }
 
     bool update_huber_pca_iteration(const accepted_sample *samples, std::uint8_t sample_count, std::uint16_t *weights, std::uint32_t *residuals_um, double &direction_x, double &direction_y)
@@ -1232,15 +1310,25 @@ namespace
     void update_heading_from_history_huber_pca()
     {
         accepted_sample samples[huber_pca_heading_max_sample_count] = {};
-        const std::uint8_t sample_count = collect_huber_pca_heading_samples(samples);
+        const std::uint8_t collected_sample_count = collect_huber_pca_heading_samples(samples);
 
-        if (sample_count < huber_pca_heading_min_sample_count)
+        if (collected_sample_count < huber_pca_heading_min_sample_count)
         {
             return;
         }
 
-        const accepted_sample newest_sample = samples[0U];
-        const accepted_sample oldest_sample = samples[sample_count - 1U];
+        const std::uint8_t reference_index = find_huber_pca_reference_index(samples, collected_sample_count);
+        const accepted_sample reference_sample = samples[reference_index];
+        accepted_sample fit_samples[huber_pca_heading_max_sample_count] = {};
+        const std::uint8_t fit_sample_count = collect_huber_pca_reference_window_samples(samples, collected_sample_count, reference_index, fit_samples);
+
+        if (fit_sample_count < huber_pca_heading_min_sample_count)
+        {
+            return;
+        }
+
+        const accepted_sample newest_sample = fit_samples[0U];
+        const accepted_sample oldest_sample = fit_samples[fit_sample_count - 1U];
         const std::int64_t movement_x_um = newest_sample.x_um - oldest_sample.x_um;
         const std::int64_t movement_y_um = newest_sample.y_um - oldest_sample.y_um;
         const std::int64_t movement_distance_um = calculate_distance_um(movement_x_um, movement_y_um);
@@ -1255,9 +1343,9 @@ namespace
         double direction_x = 1.0;
         double direction_y = 0.0;
 
-        for (std::uint8_t index = 0U; index < sample_count; index++)
+        for (std::uint8_t index = 0U; index < fit_sample_count; index++)
         {
-            weights[index] = samples[index].confidence_position;
+            weights[index] = fit_samples[index].confidence_position;
 
             if (weights[index] == 0U)
             {
@@ -1267,7 +1355,7 @@ namespace
 
         for (std::uint8_t iteration = 0U; iteration < huber_pca_iteration_count; iteration++)
         {
-            const bool fitted = update_huber_pca_iteration(samples, sample_count, weights, residuals_um, direction_x, direction_y);
+            const bool fitted = update_huber_pca_iteration(fit_samples, fit_sample_count, weights, residuals_um, direction_x, direction_y);
 
             if (fitted == false)
             {
@@ -1285,12 +1373,12 @@ namespace
 
         const double heading_rad = std::atan2(direction_y, direction_x);
         const std::int32_t measured_heading_urad = normalize_angle_urad(static_cast<std::int32_t>(std::llround(heading_rad * 1000000.0)));
-        const std::uint32_t median_residual_um = calculate_median_residual_um(residuals_um, sample_count);
-        const std::uint32_t max_residual_um = calculate_max_residual_um(residuals_um, sample_count);
+        const std::uint32_t median_residual_um = calculate_median_residual_um(residuals_um, fit_sample_count);
+        const std::uint32_t max_residual_um = calculate_max_residual_um(residuals_um, fit_sample_count);
         const std::uint16_t distance_confidence = growth_to_confidence(movement_distance_um, huber_pca_heading_min_distance_um, huber_pca_heading_full_distance_um);
-        const std::uint16_t count_confidence = sample_count_to_confidence(sample_count, huber_pca_heading_min_sample_count, huber_pca_heading_full_sample_count);
+        const std::uint16_t count_confidence = sample_count_to_confidence(fit_sample_count, huber_pca_heading_min_sample_count, huber_pca_heading_full_sample_count);
         const std::uint16_t residual_confidence = range_to_confidence(median_residual_um, huber_pca_good_residual_um, huber_pca_zero_residual_um);
-        const std::uint16_t position_confidence = calculate_samples_position_confidence(samples, sample_count);
+        const std::uint16_t position_confidence = calculate_samples_position_confidence(fit_samples, fit_sample_count);
         std::uint16_t measured_confidence = distance_confidence;
 
         measured_confidence = smaller_confidence(measured_confidence, count_confidence);
@@ -1302,25 +1390,31 @@ namespace
             return;
         }
 
-        const std::uint8_t reference_index = find_huber_pca_reference_index(samples, sample_count);
-        const accepted_sample reference_sample = samples[reference_index];
         heading_estimate_candidate candidate = {};
 
         candidate.heading_urad = measured_heading_urad;
         candidate.confidence_heading = measured_confidence;
         candidate.heading_time_ms = newest_sample.received_time_ms;
-        candidate.heading_sample_count = sample_count;
+        candidate.heading_sample_count = fit_sample_count;
         candidate.heading_distance_um = movement_distance_um;
         candidate.heading_reference_time_ms = reference_sample.received_time_ms;
         candidate.heading_reference_sample_id = reference_sample.sample_id;
         candidate.heading_estimated_delay_ms = huber_pca_heading_estimated_delay_ms;
-        candidate.heading_reference_pose_id = reference_sample.pose_id;
-        candidate.heading_reference_branch_id = reference_sample.branch_id;
+        if (reference_sample.has_local_reference == true)
+        {
+            candidate.heading_reference_pose_id = reference_sample.pose_id;
+            candidate.heading_reference_branch_id = reference_sample.branch_id;
+        }
+
         candidate.heading_reference_x_um = reference_sample.x_um;
         candidate.heading_reference_y_um = reference_sample.y_um;
         candidate.heading_reference_z_um = reference_sample.z_um;
         candidate.heading_fit_residual_um = median_residual_um;
-        candidate.huber_pca_used_sample_count = sample_count;
+        candidate.candidate_anchor_position_confidence = reference_sample.confidence_position;
+        candidate.candidate_anchor_heading_confidence = measured_confidence;
+        candidate.candidate_anchor_adjusted_heading_confidence = apply_confidence_gain(measured_confidence, candidate_anchor_heading_confidence_gain_permille);
+        candidate.candidate_anchor_confidence = smaller_confidence(candidate.candidate_anchor_position_confidence, candidate.candidate_anchor_adjusted_heading_confidence);
+        candidate.huber_pca_used_sample_count = fit_sample_count;
         candidate.huber_pca_median_residual_um = median_residual_um;
         candidate.huber_pca_max_residual_um = max_residual_um;
         candidate.huber_pca_movement_distance_um = static_cast<std::uint32_t>(movement_distance_um);
@@ -1430,6 +1524,10 @@ namespace
             output.heading_reference_y_um = stable.heading_reference_y_um;
             output.heading_reference_z_um = stable.heading_reference_z_um;
             output.heading_fit_residual_um = stable.heading_fit_residual_um;
+            output.candidate_anchor_position_confidence = stable.candidate_anchor_position_confidence;
+            output.candidate_anchor_heading_confidence = stable.candidate_anchor_heading_confidence;
+            output.candidate_anchor_adjusted_heading_confidence = stable.candidate_anchor_adjusted_heading_confidence;
+            output.candidate_anchor_confidence = stable.candidate_anchor_confidence;
             output.huber_pca_used_sample_count = stable.huber_pca_used_sample_count;
             output.huber_pca_median_residual_um = stable.huber_pca_median_residual_um;
             output.huber_pca_max_residual_um = stable.huber_pca_max_residual_um;

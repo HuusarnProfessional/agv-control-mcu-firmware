@@ -165,7 +165,7 @@ namespace mission_reference_seed
         activation.source_pose_id = local_position.pose_id;
         activation.source_branch_id = local_position.branch_id;
         activation.activation_time_ms = now_ms;
-        activation.reference_score = mission_reference_confidence;
+        activation.reference_confidence = mission_reference_confidence;
         activation.global_reference = build_seed_global_reference(first_point, second_point, now_ms);
         seed_pending = false;
         seed_used = true;

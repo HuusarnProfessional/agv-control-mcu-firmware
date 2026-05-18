@@ -21,6 +21,7 @@ namespace incoming_request_handlers
     bool handle_set_pause_ms();
     bool handle_set_speed();
     bool handle_get_mission_part_current();
+    bool handle_get_mission_status();
     bool handle_set_drive_rotate_deg();
     bool handle_set_watch_keep_alive();
     bool handle_set_watch_add();

@@ -3,9 +3,23 @@
 #include <cmath>
 
 #include "../pure_pursuit_tuning.hpp"
+#include "../../control/primitives/command_speed/command_speed_state.hpp"
 
 namespace pure_pursuit_internal
 {
+    std::int32_t scale_mission_speed(std::int16_t base_speed_mm_s)
+    {
+        const std::uint16_t requested_speed_mm_s = command_speed_state::get_requested_speed_mm_s();
+        const std::int32_t scaled_speed_mm_s = static_cast<std::int32_t>(base_speed_mm_s) * static_cast<std::int32_t>(requested_speed_mm_s) / static_cast<std::int32_t>(pure_pursuit_tuning::k_mission_speed_scale_reference_mm_s);
+
+        if (scaled_speed_mm_s < 1)
+        {
+            return 1;
+        }
+
+        return scaled_speed_mm_s;
+    }
+
     double clamp_unit(double value)
     {
         if (value < 0.0)
@@ -38,6 +52,16 @@ namespace pure_pursuit_internal
         return normalized_angle_deg;
     }
 
+    std::int32_t get_mission_linear_speed_mm_s()
+    {
+        return scale_mission_speed(pure_pursuit_tuning::k_mission_linear_speed_mm_s);
+    }
+
+    std::int32_t get_mission_min_linear_speed_mm_s()
+    {
+        return scale_mission_speed(pure_pursuit_tuning::k_mission_min_linear_speed_mm_s);
+    }
+
     void apply_heading_speed_slowdown(std::int32_t &linear_velocity_mm_s, double abs_heading_error_deg)
     {
         if (abs_heading_error_deg <= pure_pursuit_tuning::k_mission_speed_slowdown_heading_error_deg)
@@ -65,8 +89,8 @@ namespace pure_pursuit_internal
             clamped_blend = 1.0;
         }
 
-        const double max_speed = static_cast<double>(pure_pursuit_tuning::k_mission_linear_speed_mm_s);
-        const double min_speed = static_cast<double>(pure_pursuit_tuning::k_mission_min_linear_speed_mm_s);
+        const double max_speed = static_cast<double>(get_mission_linear_speed_mm_s());
+        const double min_speed = static_cast<double>(get_mission_min_linear_speed_mm_s());
         const double scaled_speed = max_speed - ((max_speed - min_speed) * clamped_blend);
         linear_velocity_mm_s = static_cast<std::int32_t>(scaled_speed);
     }
@@ -147,8 +171,8 @@ namespace pure_pursuit_internal
             clamped_yaw_ratio = 1.0;
         }
 
-        const double max_speed = static_cast<double>(pure_pursuit_tuning::k_mission_linear_speed_mm_s);
-        const double min_speed = static_cast<double>(pure_pursuit_tuning::k_mission_min_linear_speed_mm_s);
+        const double max_speed = static_cast<double>(get_mission_linear_speed_mm_s());
+        const double min_speed = static_cast<double>(get_mission_min_linear_speed_mm_s());
         const double yaw_limited_speed = max_speed - ((max_speed - min_speed) * clamped_yaw_ratio);
         const std::int32_t yaw_limited_speed_mm_s = static_cast<std::int32_t>(yaw_limited_speed);
 

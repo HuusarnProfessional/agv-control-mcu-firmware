@@ -43,6 +43,10 @@ namespace filtered_global_position
         std::int64_t heading_reference_y_um = 0;
         std::int64_t heading_reference_z_um = 0;
         std::uint32_t heading_fit_residual_um = 0U;
+        std::uint16_t candidate_anchor_position_confidence = 0U;
+        std::uint16_t candidate_anchor_heading_confidence = 0U;
+        std::uint16_t candidate_anchor_adjusted_heading_confidence = 0U;
+        std::uint16_t candidate_anchor_confidence = 0U;
         std::uint8_t huber_pca_used_sample_count = 0U;
         std::uint32_t huber_pca_median_residual_um = 0U;
         std::uint32_t huber_pca_max_residual_um = 0U;

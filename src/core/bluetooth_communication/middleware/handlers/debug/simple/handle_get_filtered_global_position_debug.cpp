@@ -66,7 +66,7 @@ namespace debug_handlers
         const std::uint32_t now_ms = static_cast<std::uint32_t>(millis());
         const filtered_global_position::output_snapshot state = filtered_global_position::read_output(now_ms);
 
-        char response[1600] = {};
+        char response[1900] = {};
         std::size_t offset = 0U;
         bool formatted = true;
 
@@ -97,6 +97,10 @@ namespace debug_handlers
         append_debug_field(formatted, response, sizeof(response), offset, " heading_reference_y_um %lld", static_cast<long long>(state.heading_reference_y_um));
         append_debug_field(formatted, response, sizeof(response), offset, " heading_reference_z_um %lld", static_cast<long long>(state.heading_reference_z_um));
         append_debug_field(formatted, response, sizeof(response), offset, " heading_fit_residual_um %lu", static_cast<unsigned long>(state.heading_fit_residual_um));
+        append_debug_field(formatted, response, sizeof(response), offset, " candidate_anchor_position_confidence %u", static_cast<unsigned>(state.candidate_anchor_position_confidence));
+        append_debug_field(formatted, response, sizeof(response), offset, " candidate_anchor_heading_confidence %u", static_cast<unsigned>(state.candidate_anchor_heading_confidence));
+        append_debug_field(formatted, response, sizeof(response), offset, " candidate_anchor_adjusted_heading_confidence %u", static_cast<unsigned>(state.candidate_anchor_adjusted_heading_confidence));
+        append_debug_field(formatted, response, sizeof(response), offset, " candidate_anchor_confidence %u", static_cast<unsigned>(state.candidate_anchor_confidence));
         append_debug_field(formatted, response, sizeof(response), offset, " huber_pca_used_sample_count %u", static_cast<unsigned>(state.huber_pca_used_sample_count));
         append_debug_field(formatted, response, sizeof(response), offset, " huber_pca_median_residual_um %lu", static_cast<unsigned long>(state.huber_pca_median_residual_um));
         append_debug_field(formatted, response, sizeof(response), offset, " huber_pca_max_residual_um %lu", static_cast<unsigned long>(state.huber_pca_max_residual_um));

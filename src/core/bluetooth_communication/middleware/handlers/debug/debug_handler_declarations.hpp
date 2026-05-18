@@ -31,6 +31,7 @@ namespace debug_handlers
     bool handle_get_filtered_global_position_debug();
     bool handle_get_global_reference_selector_debug();
     bool handle_get_local_to_global_transform_debug();
+    bool handle_get_anchor_event_debug();
     bool handle_get_filtered_global_offset_fusion_debug();
     bool handle_set_position_sensorfusion_bypass();
     bool handle_set_position_sensorfusion_local_only();

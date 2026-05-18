@@ -53,11 +53,11 @@ namespace
             if (transformed_local_position.branch_matches == true)
             {
                 reference.has_reference = true;
+                reference.has_heading = transformed_local_position.has_pose;
+                reference.heading_urad = transformed_local_position.heading_urad;
             }
         }
 
-        reference.confidence_position = transformed_local_position.confidence_position;
-        reference.confidence_heading = transformed_local_position.confidence_heading;
         reference.branch_id = transformed_local_position.branch_id;
 
         return reference;

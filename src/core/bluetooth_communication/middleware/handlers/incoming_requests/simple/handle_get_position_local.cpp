@@ -3,7 +3,7 @@
 #include <cstdio>
 
 #include "../../../middleware_parse_helpers.hpp"
-#include "../../../../../position_sensorfusion/position_sensorfusion.hpp"
+#include "../../../../../motion_mcu_communication/state/incoming/incoming_state.hpp"
 #include "../../handler_helpers.hpp"
 
 namespace
@@ -24,7 +24,7 @@ namespace incoming_request_handlers
             return false;
         }
 
-        const position_sensorfusion::output_snapshot local_position = position_sensorfusion::read_output();
+        const motion_mcu_incoming_state::local_position_state local_position = motion_mcu_incoming_state::get_local_position();
         const std::int32_t x_mm = static_cast<std::int32_t>(local_position.x_um / 1000LL);
         const std::int32_t y_mm = static_cast<std::int32_t>(local_position.y_um / 1000LL);
         const double heading_deg = static_cast<double>(local_position.heading_urad) * 180.0 / 3141592.653589793;

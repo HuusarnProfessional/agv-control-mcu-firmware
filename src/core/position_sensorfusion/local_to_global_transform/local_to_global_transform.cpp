@@ -8,11 +8,6 @@ namespace
     constexpr std::uint16_t full_confidence = 1000U;
     constexpr std::int32_t pi_urad = 3141593;
     constexpr std::int32_t two_pi_urad = 6283185;
-    constexpr std::int64_t mission_seed_full_distance_um = 500000;
-    constexpr std::int64_t mission_seed_zero_distance_um = 5000000;
-    constexpr std::uint32_t mission_seed_full_age_ms = 1500U;
-    constexpr std::uint32_t mission_seed_zero_age_ms = 15000U;
-
     struct transform_state
     {
         bool valid = false;
@@ -38,6 +33,8 @@ namespace
 
     transform_state active_transform = {};
     local_to_global_transform::output_snapshot latest_output = {};
+    local_to_global_transform::anchor_event_snapshot latest_anchor_event = {};
+    std::uint32_t next_anchor_event_id = 1U;
 
     std::int32_t normalize_angle_urad(std::int32_t angle_urad)
     {
@@ -57,88 +54,6 @@ namespace
         return normalized;
     }
 
-    std::uint16_t multiply_confidence(std::uint16_t left, std::uint16_t right)
-    {
-        const std::uint32_t multiplied = static_cast<std::uint32_t>(left) * static_cast<std::uint32_t>(right);
-        const std::uint32_t scaled = multiplied / full_confidence;
-
-        return static_cast<std::uint16_t>(scaled);
-    }
-
-    std::uint32_t get_age_ms(std::uint32_t now_ms, std::uint32_t start_time_ms)
-    {
-        if (now_ms < start_time_ms)
-        {
-            return 0U;
-        }
-
-        return now_ms - start_time_ms;
-    }
-
-    std::int64_t calculate_distance_um(std::int64_t delta_x_um, std::int64_t delta_y_um)
-    {
-        const double delta_x = static_cast<double>(delta_x_um);
-        const double delta_y = static_cast<double>(delta_y_um);
-        const double distance = std::sqrt((delta_x * delta_x) + (delta_y * delta_y));
-
-        return static_cast<std::int64_t>(distance);
-    }
-
-    std::uint16_t range_to_confidence(std::int64_t value, std::int64_t full_value, std::int64_t zero_value)
-    {
-        if (value <= full_value)
-        {
-            return full_confidence;
-        }
-
-        if (value >= zero_value)
-        {
-            return 0U;
-        }
-
-        const std::int64_t range = zero_value - full_value;
-        const std::int64_t remaining = zero_value - value;
-        const std::int64_t confidence = remaining * static_cast<std::int64_t>(full_confidence) / range;
-
-        return static_cast<std::uint16_t>(confidence);
-    }
-
-    std::uint16_t age_to_confidence(std::uint32_t age_ms, std::uint32_t full_age_ms, std::uint32_t zero_age_ms)
-    {
-        if (age_ms <= full_age_ms)
-        {
-            return full_confidence;
-        }
-
-        if (age_ms >= zero_age_ms)
-        {
-            return 0U;
-        }
-
-        const std::uint32_t range_ms = zero_age_ms - full_age_ms;
-        const std::uint32_t remaining_ms = zero_age_ms - age_ms;
-        const std::uint32_t confidence = remaining_ms * full_confidence / range_ms;
-
-        return static_cast<std::uint16_t>(confidence);
-    }
-
-    std::uint16_t calculate_mission_seed_decay(const motion_mcu_incoming_state::local_position_state &local_position, std::uint32_t now_ms)
-    {
-        if (active_transform.is_mission_seed == false)
-        {
-            return full_confidence;
-        }
-
-        const std::int64_t local_delta_x_um = local_position.x_um - active_transform.local_reference_x_um;
-        const std::int64_t local_delta_y_um = local_position.y_um - active_transform.local_reference_y_um;
-        const std::int64_t local_distance_um = calculate_distance_um(local_delta_x_um, local_delta_y_um);
-        const std::uint32_t age_ms = get_age_ms(now_ms, active_transform.activation_time_ms);
-        const std::uint16_t distance_confidence = range_to_confidence(local_distance_um, mission_seed_full_distance_um, mission_seed_zero_distance_um);
-        const std::uint16_t age_confidence = age_to_confidence(age_ms, mission_seed_full_age_ms, mission_seed_zero_age_ms);
-
-        return multiply_confidence(distance_confidence, age_confidence);
-    }
-
     void rotate_local_delta(std::int64_t local_delta_x_um, std::int64_t local_delta_y_um, std::int32_t rotation_urad, std::int64_t &global_delta_x_um, std::int64_t &global_delta_y_um)
     {
         const double rotation_rad = static_cast<double>(rotation_urad) / 1000000.0;
@@ -149,6 +64,38 @@ namespace
 
         global_delta_x_um = static_cast<std::int64_t>(rotated_x_um);
         global_delta_y_um = static_cast<std::int64_t>(rotated_y_um);
+    }
+
+    std::int32_t calculate_matrix_value_ppm(double value)
+    {
+        return static_cast<std::int32_t>(std::llround(value * 1000000.0));
+    }
+
+    void store_anchor_event(const global_reference_selector::reference_activation &activation)
+    {
+        const double rotation_rad = static_cast<double>(active_transform.rotation_urad) / 1000000.0;
+        const double cos_rotation = std::cos(rotation_rad);
+        const double sin_rotation = std::sin(rotation_rad);
+
+        latest_anchor_event.valid = true;
+        latest_anchor_event.event_id = next_anchor_event_id;
+        latest_anchor_event.is_initial_reference = activation.is_initial_reference;
+        latest_anchor_event.is_mission_seed = activation.is_mission_seed;
+        latest_anchor_event.source_pose_id = activation.source_pose_id;
+        latest_anchor_event.source_branch_id = activation.source_branch_id;
+        latest_anchor_event.activation_time_ms = activation.activation_time_ms;
+        latest_anchor_event.reference_confidence = activation.reference_confidence;
+        latest_anchor_event.reference_sample_id = active_transform.reference_sample_id;
+        latest_anchor_event.local_reference_x_um = active_transform.local_reference_x_um;
+        latest_anchor_event.local_reference_y_um = active_transform.local_reference_y_um;
+        latest_anchor_event.local_reference_heading_urad = active_transform.local_reference_heading_urad;
+        latest_anchor_event.global_reference_x_um = active_transform.global_reference_x_um;
+        latest_anchor_event.global_reference_y_um = active_transform.global_reference_y_um;
+        latest_anchor_event.global_reference_heading_urad = active_transform.global_reference_heading_urad;
+        latest_anchor_event.rotation_urad = active_transform.rotation_urad;
+        latest_anchor_event.matrix_cos_ppm = calculate_matrix_value_ppm(cos_rotation);
+        latest_anchor_event.matrix_sin_ppm = calculate_matrix_value_ppm(sin_rotation);
+        next_anchor_event_id++;
     }
 
     bool activate_transform(const motion_mcu_incoming_state::local_position_state &local_position, const global_reference_selector::reference_activation &activation)
@@ -199,6 +146,8 @@ namespace
         active_transform.is_mission_seed = activation.is_mission_seed;
         active_transform.activation_time_ms = activation.activation_time_ms;
 
+        store_anchor_event(activation);
+
         return true;
     }
 
@@ -233,21 +182,17 @@ namespace
 
         rotate_local_delta(local_delta_x_um, local_delta_y_um, active_transform.rotation_urad, global_delta_x_um, global_delta_y_um);
 
-        const std::uint16_t transform_decay = calculate_mission_seed_decay(local_position, now_ms);
-        const std::uint16_t transform_confidence_position = multiply_confidence(active_transform.confidence_position, transform_decay);
-        const std::uint16_t transform_confidence_heading = multiply_confidence(active_transform.confidence_heading, transform_decay);
-
         output.has_pose = true;
         output.x_um = active_transform.global_reference_x_um + global_delta_x_um;
         output.y_um = active_transform.global_reference_y_um + global_delta_y_um;
         output.heading_urad = normalize_angle_urad(local_position.heading_urad + active_transform.rotation_urad);
-        output.confidence_position = multiply_confidence(local_position.confidence_position, transform_confidence_position);
-        output.confidence_heading = multiply_confidence(local_position.confidence_heading, transform_confidence_heading);
+        output.confidence_position = local_position.confidence_position;
+        output.confidence_heading = local_position.confidence_heading;
         output.pose_id = local_position.pose_id;
         output.branch_id = local_position.branch_id;
         output.reference_sample_id = active_transform.reference_sample_id;
-        output.transform_confidence_position = transform_confidence_position;
-        output.transform_confidence_heading = transform_confidence_heading;
+        output.transform_confidence_position = full_confidence;
+        output.transform_confidence_heading = full_confidence;
         output.is_mission_seed = active_transform.is_mission_seed;
         output.activation_time_ms = active_transform.activation_time_ms;
 
@@ -266,6 +211,8 @@ namespace local_to_global_transform
     {
         active_transform = {};
         latest_output = {};
+        latest_anchor_event = {};
+        next_anchor_event_id = 1U;
     }
 
     output_snapshot update(const motion_mcu_incoming_state::local_position_state &local_position, const global_reference_selector::reference_activation &activation, std::uint32_t now_ms)
@@ -287,5 +234,10 @@ namespace local_to_global_transform
         latest_output = project_local_position(local_position, false, now_ms);
 
         return latest_output;
+    }
+
+    anchor_event_snapshot read_anchor_event()
+    {
+        return latest_anchor_event;
     }
 }
