@@ -35,6 +35,7 @@ namespace local_to_global_transform
     {
         bool valid = false;
         std::uint32_t event_id = 0U;
+        global_reference_selector::anchor_type type = global_reference_selector::anchor_type::none;
         bool is_initial_reference = false;
         bool is_mission_seed = false;
         std::uint16_t source_pose_id = 0U;

@@ -91,7 +91,7 @@ namespace
         const int length = std::snprintf(
             response,
             sizeof(response),
-            "rsp:anchor_event(%lu,%lu,%lu,%u,%u,%u,%lu,%ld,%ld,%ld,%ld)",
+            "rsp:anchor_event(%lu,%lu,%lu,%u,%u,%u,%lu,%ld,%ld,%ld,%ld,%u)",
             static_cast<unsigned long>(event.event_id),
             static_cast<unsigned long>(bool_to_u32(event.is_initial_reference)),
             static_cast<unsigned long>(bool_to_u32(event.is_mission_seed)),
@@ -102,7 +102,8 @@ namespace
             static_cast<long>(event.global_reference_x_um / 1000LL),
             static_cast<long>(event.global_reference_y_um / 1000LL),
             static_cast<long>(event.global_reference_heading_urad),
-            static_cast<long>(event.rotation_urad));
+            static_cast<long>(event.rotation_urad),
+            static_cast<unsigned>(event.type));
 
         if ((length <= 0) || (static_cast<std::size_t>(length) >= sizeof(response)))
         {
@@ -120,6 +121,7 @@ namespace
 
         latest_anchor_event.valid = true;
         latest_anchor_event.event_id = next_anchor_event_id;
+        latest_anchor_event.type = activation.type;
         latest_anchor_event.is_initial_reference = activation.is_initial_reference;
         latest_anchor_event.is_mission_seed = activation.is_mission_seed;
         latest_anchor_event.source_pose_id = activation.source_pose_id;
@@ -159,7 +161,21 @@ namespace
             return false;
         }
 
-        if (activation.global_reference.has_heading == false)
+        if (activation.type == global_reference_selector::anchor_type::none)
+        {
+            return false;
+        }
+
+        if ((activation.global_reference.has_heading == false) && (activation.type != global_reference_selector::anchor_type::position_only))
+        {
+            return false;
+        }
+
+        const bool position_only_anchor = activation.type == global_reference_selector::anchor_type::position_only;
+        const std::int32_t previous_rotation_urad = active_transform.rotation_urad;
+        const std::uint16_t previous_heading_confidence = active_transform.confidence_heading;
+
+        if ((position_only_anchor == true) && (active_transform.valid == false))
         {
             return false;
         }
@@ -181,10 +197,20 @@ namespace
 
         active_transform.global_reference_x_um = activation.global_reference.x_um;
         active_transform.global_reference_y_um = activation.global_reference.y_um;
-        active_transform.global_reference_heading_urad = activation.global_reference.heading_urad;
-        active_transform.rotation_urad = normalize_angle_urad(activation.global_reference.heading_urad - active_transform.local_reference_heading_urad);
+
+        if (position_only_anchor == true)
+        {
+            active_transform.rotation_urad = previous_rotation_urad;
+            active_transform.global_reference_heading_urad = normalize_angle_urad(active_transform.local_reference_heading_urad + active_transform.rotation_urad);
+        }
+        else
+        {
+            active_transform.global_reference_heading_urad = activation.global_reference.heading_urad;
+            active_transform.rotation_urad = normalize_angle_urad(activation.global_reference.heading_urad - active_transform.local_reference_heading_urad);
+        }
+
         active_transform.confidence_position = activation.global_reference.confidence_position;
-        active_transform.confidence_heading = activation.global_reference.confidence_heading;
+        active_transform.confidence_heading = position_only_anchor == true ? previous_heading_confidence : activation.global_reference.confidence_heading;
         active_transform.branch_id = local_position.branch_id;
         active_transform.reference_sample_id = activation.global_reference.sample_id;
         active_transform.is_mission_seed = activation.is_mission_seed;

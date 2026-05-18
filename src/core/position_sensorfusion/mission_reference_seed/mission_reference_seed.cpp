@@ -160,6 +160,7 @@ namespace mission_reference_seed
         }
 
         activation.has_activation = true;
+        activation.type = global_reference_selector::anchor_type::heading_transform;
         activation.is_initial_reference = true;
         activation.is_mission_seed = true;
         activation.source_pose_id = local_position.pose_id;

@@ -54,8 +54,19 @@ namespace
     constexpr std::uint32_t huber_pca_good_residual_um = 20000U;
     constexpr std::uint32_t huber_pca_zero_residual_um = 120000U;
     constexpr std::uint8_t huber_pca_iteration_count = 6U;
-    constexpr std::uint16_t default_candidate_anchor_heading_confidence_gain_permille = 3500U;
-    constexpr std::uint16_t maximum_candidate_anchor_heading_confidence_gain_permille = 10000U;
+    constexpr std::uint32_t position_anchor_max_age_ms = 2200U;
+    constexpr std::uint32_t position_anchor_estimated_delay_ms = 900U;
+    constexpr std::uint32_t position_anchor_reference_window_ms = 900U;
+    constexpr std::uint8_t position_anchor_min_sample_count = 5U;
+    constexpr std::uint8_t position_anchor_full_sample_count = 10U;
+    constexpr std::uint8_t position_anchor_max_sample_count = 20U;
+    constexpr std::uint32_t position_anchor_huber_delta_um = 80000U;
+    constexpr std::uint32_t position_anchor_good_residual_um = 50000U;
+    constexpr std::uint32_t position_anchor_zero_residual_um = 300000U;
+    constexpr std::uint8_t position_anchor_iteration_count = 5U;
+    constexpr std::uint16_t default_candidate_anchor_heading_confidence_gain_permille = 2500U;
+    constexpr std::uint16_t default_candidate_position_anchor_confidence_gain_permille = 1200U;
+    constexpr std::uint16_t maximum_candidate_anchor_confidence_gain_permille = 10000U;
 
     constexpr std::uint32_t position_confidence_full_age_ms = 250U;
     constexpr std::uint32_t position_confidence_zero_age_ms = 2500U;
@@ -92,6 +103,16 @@ namespace
         std::uint32_t heading_time_ms = 0U;
         std::uint8_t heading_sample_count = 0U;
         std::int64_t heading_distance_um = 0;
+        std::uint32_t position_reference_time_ms = 0U;
+        std::uint32_t position_reference_sample_id = 0U;
+        std::uint16_t position_reference_pose_id = 0U;
+        std::uint8_t position_reference_branch_id = 0U;
+        std::int64_t position_reference_x_um = 0;
+        std::int64_t position_reference_y_um = 0;
+        std::int64_t position_reference_z_um = 0;
+        std::uint8_t position_anchor_sample_count = 0U;
+        std::uint32_t position_anchor_median_residual_um = 0U;
+        std::uint32_t position_anchor_window_age_ms = 0U;
         std::uint32_t heading_reference_time_ms = 0U;
         std::uint32_t heading_reference_sample_id = 0U;
         std::uint32_t heading_estimated_delay_ms = 0U;
@@ -105,6 +126,7 @@ namespace
         std::uint16_t candidate_anchor_heading_confidence = 0U;
         std::uint16_t candidate_anchor_adjusted_heading_confidence = 0U;
         std::uint16_t candidate_anchor_confidence = 0U;
+        std::uint16_t candidate_position_anchor_confidence = 0U;
         std::uint8_t huber_pca_used_sample_count = 0U;
         std::uint32_t huber_pca_median_residual_um = 0U;
         std::uint32_t huber_pca_max_residual_um = 0U;
@@ -156,6 +178,7 @@ namespace
     bool has_last_sample_id = false;
     std::uint32_t last_sample_id = 0U;
     std::uint16_t candidate_anchor_heading_confidence_gain_permille = default_candidate_anchor_heading_confidence_gain_permille;
+    std::uint16_t candidate_position_anchor_confidence_gain_permille = default_candidate_position_anchor_confidence_gain_permille;
 
     std::uint32_t get_age_ms(std::uint32_t now_ms, std::uint32_t start_time_ms)
     {
@@ -896,6 +919,32 @@ namespace
         return static_cast<std::uint16_t>(median_confidence);
     }
 
+    std::uint16_t calculate_position_anchor_samples_confidence(const accepted_sample *samples, std::uint8_t sample_count)
+    {
+        std::int64_t confidence_values[position_anchor_max_sample_count] = {};
+        std::uint8_t confidence_count = 0U;
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            if (samples[index].valid == false)
+            {
+                continue;
+            }
+
+            confidence_values[confidence_count] = static_cast<std::int64_t>(samples[index].confidence_position);
+            confidence_count++;
+        }
+
+        if (confidence_count == 0U)
+        {
+            return 0U;
+        }
+
+        const std::int64_t median_confidence = median_value(confidence_values, confidence_count);
+
+        return static_cast<std::uint16_t>(median_confidence);
+    }
+
     std::int64_t calculate_max_line_error_um(std::uint8_t last_index)
     {
         const accepted_sample newest_sample = history[0U];
@@ -1439,6 +1488,298 @@ namespace
         }
     }
 
+    std::uint8_t collect_position_anchor_samples(accepted_sample *samples_out)
+    {
+        if (history_count == 0U)
+        {
+            return 0U;
+        }
+
+        const accepted_sample newest_sample = history[0U];
+        std::uint8_t sample_count = 0U;
+
+        for (std::uint8_t index = 0U; index < history_count; index++)
+        {
+            const accepted_sample sample = history[index];
+
+            if (sample.valid == false)
+            {
+                continue;
+            }
+
+            const std::uint32_t age_ms = calculate_time_delta_ms(sample, newest_sample);
+
+            if (age_ms > position_anchor_max_age_ms)
+            {
+                continue;
+            }
+
+            samples_out[sample_count] = sample;
+            sample_count++;
+
+            if (sample_count >= position_anchor_max_sample_count)
+            {
+                return sample_count;
+            }
+        }
+
+        return sample_count;
+    }
+
+    bool find_position_anchor_reference_index(const accepted_sample *samples, std::uint8_t sample_count, std::uint8_t &reference_index_out)
+    {
+        const accepted_sample newest_sample = samples[0U];
+        const std::uint32_t target_time_ms = newest_sample.received_time_ms > position_anchor_estimated_delay_ms ? newest_sample.received_time_ms - position_anchor_estimated_delay_ms : 0U;
+        std::uint32_t best_error_ms = UINT32_MAX;
+        bool has_reference_sample = false;
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            if (samples[index].has_local_reference == false)
+            {
+                continue;
+            }
+
+            const std::uint32_t error_ms = absolute_time_difference_ms(samples[index].received_time_ms, target_time_ms);
+
+            if (error_ms < best_error_ms)
+            {
+                best_error_ms = error_ms;
+                reference_index_out = index;
+                has_reference_sample = true;
+            }
+        }
+
+        return has_reference_sample;
+    }
+
+    std::uint8_t collect_position_anchor_window_samples(const accepted_sample *samples, std::uint8_t sample_count, const accepted_sample &reference_sample, accepted_sample *samples_out)
+    {
+        std::uint8_t output_count = 0U;
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            const std::uint32_t time_error_ms = absolute_time_difference_ms(samples[index].received_time_ms, reference_sample.received_time_ms);
+
+            if (time_error_ms > position_anchor_reference_window_ms)
+            {
+                continue;
+            }
+
+            samples_out[output_count] = samples[index];
+            output_count++;
+
+            if (output_count >= position_anchor_max_sample_count)
+            {
+                return output_count;
+            }
+        }
+
+        return output_count;
+    }
+
+    bool calculate_weighted_center(const accepted_sample *samples, std::uint8_t sample_count, const std::uint16_t *weights, double &center_x, double &center_y, double &center_z)
+    {
+        double weight_sum = 0.0;
+
+        center_x = 0.0;
+        center_y = 0.0;
+        center_z = 0.0;
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            const double weight = static_cast<double>(weights[index]);
+
+            center_x += weight * static_cast<double>(samples[index].x_um);
+            center_y += weight * static_cast<double>(samples[index].y_um);
+            center_z += weight * static_cast<double>(samples[index].z_um);
+            weight_sum += weight;
+        }
+
+        if (weight_sum <= 0.0)
+        {
+            return false;
+        }
+
+        center_x /= weight_sum;
+        center_y /= weight_sum;
+        center_z /= weight_sum;
+
+        return true;
+    }
+
+    bool update_position_anchor_huber_iteration(const accepted_sample *samples, std::uint8_t sample_count, std::uint16_t *weights, std::uint32_t *residuals_um, double &center_x, double &center_y, double &center_z)
+    {
+        if (calculate_weighted_center(samples, sample_count, weights, center_x, center_y, center_z) == false)
+        {
+            return false;
+        }
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            const double dx = static_cast<double>(samples[index].x_um) - center_x;
+            const double dy = static_cast<double>(samples[index].y_um) - center_y;
+            const double residual_double = std::sqrt((dx * dx) + (dy * dy));
+            const std::uint32_t residual_um = static_cast<std::uint32_t>(std::llround(residual_double));
+
+            residuals_um[index] = residual_um;
+
+            std::uint32_t robust_weight = full_confidence;
+
+            if (residual_um > position_anchor_huber_delta_um)
+            {
+                robust_weight = position_anchor_huber_delta_um * static_cast<std::uint32_t>(full_confidence) / residual_um;
+
+                if (robust_weight == 0U)
+                {
+                    robust_weight = 1U;
+                }
+            }
+
+            std::uint32_t confidence = samples[index].confidence_position;
+
+            if (confidence == 0U)
+            {
+                confidence = 1U;
+            }
+
+            std::uint32_t combined_weight = confidence * robust_weight / static_cast<std::uint32_t>(full_confidence);
+
+            if (combined_weight == 0U)
+            {
+                combined_weight = 1U;
+            }
+
+            if (combined_weight > full_confidence)
+            {
+                combined_weight = full_confidence;
+            }
+
+            weights[index] = static_cast<std::uint16_t>(combined_weight);
+        }
+
+        return true;
+    }
+
+    bool calculate_position_anchor_center(const accepted_sample *samples, std::uint8_t sample_count, accepted_sample &center_sample_out, std::uint32_t &median_residual_um_out)
+    {
+        std::uint16_t weights[position_anchor_max_sample_count] = {};
+        std::uint32_t residuals_um[position_anchor_max_sample_count] = {};
+        double center_x = 0.0;
+        double center_y = 0.0;
+        double center_z = 0.0;
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            weights[index] = samples[index].confidence_position;
+
+            if (weights[index] == 0U)
+            {
+                weights[index] = 1U;
+            }
+        }
+
+        for (std::uint8_t iteration = 0U; iteration < position_anchor_iteration_count; iteration++)
+        {
+            if (update_position_anchor_huber_iteration(samples, sample_count, weights, residuals_um, center_x, center_y, center_z) == false)
+            {
+                return false;
+            }
+        }
+
+        if (calculate_weighted_center(samples, sample_count, weights, center_x, center_y, center_z) == false)
+        {
+            return false;
+        }
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            const double dx = static_cast<double>(samples[index].x_um) - center_x;
+            const double dy = static_cast<double>(samples[index].y_um) - center_y;
+            const double residual_double = std::sqrt((dx * dx) + (dy * dy));
+
+            residuals_um[index] = static_cast<std::uint32_t>(std::llround(residual_double));
+        }
+
+        center_sample_out.x_um = static_cast<std::int64_t>(std::llround(center_x));
+        center_sample_out.y_um = static_cast<std::int64_t>(std::llround(center_y));
+        center_sample_out.z_um = static_cast<std::int64_t>(std::llround(center_z));
+        median_residual_um_out = calculate_median_residual_um(residuals_um, sample_count);
+
+        return true;
+    }
+
+    void update_position_anchor_from_history()
+    {
+        accepted_sample samples[position_anchor_max_sample_count] = {};
+        const std::uint8_t collected_sample_count = collect_position_anchor_samples(samples);
+
+        if (collected_sample_count < position_anchor_min_sample_count)
+        {
+            stable.candidate_position_anchor_confidence = 0U;
+            stable.position_anchor_sample_count = 0U;
+            stable.position_anchor_median_residual_um = 0U;
+            stable.position_anchor_window_age_ms = 0U;
+            return;
+        }
+
+        std::uint8_t reference_index = 0U;
+
+        if (find_position_anchor_reference_index(samples, collected_sample_count, reference_index) == false)
+        {
+            stable.candidate_position_anchor_confidence = 0U;
+            stable.position_anchor_sample_count = 0U;
+            stable.position_anchor_median_residual_um = 0U;
+            stable.position_anchor_window_age_ms = 0U;
+            return;
+        }
+
+        const accepted_sample reference_sample = samples[reference_index];
+        accepted_sample fit_samples[position_anchor_max_sample_count] = {};
+        const std::uint8_t fit_sample_count = collect_position_anchor_window_samples(samples, collected_sample_count, reference_sample, fit_samples);
+
+        if (fit_sample_count < position_anchor_min_sample_count)
+        {
+            stable.candidate_position_anchor_confidence = 0U;
+            stable.position_anchor_sample_count = fit_sample_count;
+            stable.position_anchor_median_residual_um = 0U;
+            stable.position_anchor_window_age_ms = 0U;
+            return;
+        }
+
+        accepted_sample center_sample = reference_sample;
+        std::uint32_t median_residual_um = 0U;
+
+        if (calculate_position_anchor_center(fit_samples, fit_sample_count, center_sample, median_residual_um) == false)
+        {
+            stable.candidate_position_anchor_confidence = 0U;
+            stable.position_anchor_sample_count = fit_sample_count;
+            stable.position_anchor_median_residual_um = 0U;
+            stable.position_anchor_window_age_ms = 0U;
+            return;
+        }
+
+        const std::uint16_t sample_count_confidence = sample_count_to_confidence(fit_sample_count, position_anchor_min_sample_count, position_anchor_full_sample_count);
+        const std::uint16_t position_confidence = calculate_position_anchor_samples_confidence(fit_samples, fit_sample_count);
+        const std::uint16_t residual_confidence = range_to_confidence(median_residual_um, position_anchor_good_residual_um, position_anchor_zero_residual_um);
+        std::uint16_t anchor_confidence = sample_count_confidence;
+
+        anchor_confidence = smaller_confidence(anchor_confidence, position_confidence);
+        anchor_confidence = smaller_confidence(anchor_confidence, residual_confidence);
+
+        stable.position_reference_time_ms = reference_sample.received_time_ms;
+        stable.position_reference_sample_id = reference_sample.sample_id;
+        stable.position_reference_pose_id = reference_sample.pose_id;
+        stable.position_reference_branch_id = reference_sample.branch_id;
+        stable.position_reference_x_um = center_sample.x_um;
+        stable.position_reference_y_um = center_sample.y_um;
+        stable.position_reference_z_um = center_sample.z_um;
+        stable.candidate_position_anchor_confidence = anchor_confidence;
+        stable.position_anchor_sample_count = fit_sample_count;
+        stable.position_anchor_median_residual_um = median_residual_um;
+        stable.position_anchor_window_age_ms = calculate_time_delta_ms(fit_samples[fit_sample_count - 1U], fit_samples[0U]);
+    }
+
     void accept_initial_sample(const accepted_sample &sample)
     {
         stable.has_position = true;
@@ -1447,7 +1788,20 @@ namespace
         stable.z_um = sample.z_um;
         stable.confidence_position = sample.confidence_position;
         stable.position_time_ms = sample.received_time_ms;
+        stable.position_reference_time_ms = sample.received_time_ms;
+        stable.position_reference_sample_id = sample.sample_id;
+        stable.position_reference_x_um = sample.x_um;
+        stable.position_reference_y_um = sample.y_um;
+        stable.position_reference_z_um = sample.z_um;
+
+        if (sample.has_local_reference == true)
+        {
+            stable.position_reference_pose_id = sample.pose_id;
+            stable.position_reference_branch_id = sample.branch_id;
+        }
+
         push_history(sample);
+        update_position_anchor_from_history();
         clear_bootstrap();
     }
 
@@ -1470,6 +1824,17 @@ namespace
         stable.z_um += weighted_step_um(sample.z_um - stable.z_um, stable.confidence_position, filtered_confidence);
         stable.confidence_position = larger_confidence(stable.confidence_position, filtered_confidence);
         stable.position_time_ms = sample.received_time_ms;
+        stable.position_reference_time_ms = sample.received_time_ms;
+        stable.position_reference_sample_id = sample.sample_id;
+        stable.position_reference_x_um = stable.x_um;
+        stable.position_reference_y_um = stable.y_um;
+        stable.position_reference_z_um = stable.z_um;
+
+        if (sample.has_local_reference == true)
+        {
+            stable.position_reference_pose_id = sample.pose_id;
+            stable.position_reference_branch_id = sample.branch_id;
+        }
 
         accepted_sample smoothed_sample = sample;
         smoothed_sample.x_um = stable.x_um;
@@ -1477,6 +1842,7 @@ namespace
         smoothed_sample.z_um = stable.z_um;
         smoothed_sample.confidence_position = filtered_confidence;
         push_history(smoothed_sample);
+        update_position_anchor_from_history();
         update_heading_from_history();
     }
 
@@ -1505,6 +1871,17 @@ namespace
             output.y_um = stable.y_um;
             output.z_um = stable.z_um;
             output.confidence_position = multiply_confidence(stable.confidence_position, age_confidence);
+            output.position_reference_time_ms = stable.position_reference_time_ms;
+            output.position_reference_sample_id = stable.position_reference_sample_id;
+            output.position_reference_pose_id = stable.position_reference_pose_id;
+            output.position_reference_branch_id = stable.position_reference_branch_id;
+            output.position_reference_x_um = stable.position_reference_x_um;
+            output.position_reference_y_um = stable.position_reference_y_um;
+            output.position_reference_z_um = stable.position_reference_z_um;
+            output.position_anchor_sample_count = stable.position_anchor_sample_count;
+            output.position_anchor_median_residual_um = stable.position_anchor_median_residual_um;
+            output.position_anchor_window_age_ms = stable.position_anchor_window_age_ms;
+            output.candidate_position_anchor_confidence = apply_confidence_gain(multiply_confidence(stable.candidate_position_anchor_confidence, age_confidence), candidate_position_anchor_confidence_gain_permille);
         }
 
         if (stable.has_heading == true)
@@ -1621,11 +1998,12 @@ namespace filtered_global_position
         has_last_sample_id = false;
         last_sample_id = 0U;
         candidate_anchor_heading_confidence_gain_permille = default_candidate_anchor_heading_confidence_gain_permille;
+        candidate_position_anchor_confidence_gain_permille = default_candidate_position_anchor_confidence_gain_permille;
     }
 
     bool set_candidate_anchor_heading_confidence_gain_permille(std::uint16_t gain_permille)
     {
-        if (gain_permille > maximum_candidate_anchor_heading_confidence_gain_permille)
+        if (gain_permille > maximum_candidate_anchor_confidence_gain_permille)
         {
             return false;
         }
@@ -1637,6 +2015,22 @@ namespace filtered_global_position
     std::uint16_t get_candidate_anchor_heading_confidence_gain_permille()
     {
         return candidate_anchor_heading_confidence_gain_permille;
+    }
+
+    bool set_candidate_position_anchor_confidence_gain_permille(std::uint16_t gain_permille)
+    {
+        if (gain_permille > maximum_candidate_anchor_confidence_gain_permille)
+        {
+            return false;
+        }
+
+        candidate_position_anchor_confidence_gain_permille = gain_permille;
+        return true;
+    }
+
+    std::uint16_t get_candidate_position_anchor_confidence_gain_permille()
+    {
+        return candidate_position_anchor_confidence_gain_permille;
     }
 
     output_snapshot update(std::uint32_t now_ms, const motion_mcu_incoming_state::local_position_state &local_position)

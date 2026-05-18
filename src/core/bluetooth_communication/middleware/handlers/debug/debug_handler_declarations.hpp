@@ -37,6 +37,7 @@ namespace debug_handlers
     bool handle_set_position_sensorfusion_local_only();
     bool handle_set_position_sensorfusion_global_anchor_test();
     bool handle_set_filtered_global_anchor_confidence_gain();
+    bool handle_set_filtered_global_position_anchor_confidence_gain();
     bool handle_get_voltage_debug();
     bool handle_run_mission_part_test();
     bool handle_run_position_capture_test();

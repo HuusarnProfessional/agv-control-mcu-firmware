@@ -101,6 +101,7 @@ namespace
         {"set_position_sensorfusion_local_only(bool:enabled)", debug_handlers::handle_set_position_sensorfusion_local_only},
         {"set_position_sensorfusion_global_anchor_test(bool:enabled)", debug_handlers::handle_set_position_sensorfusion_global_anchor_test},
         {"set_filtered_global_anchor_confidence_gain(uint16_t:gain_permille)", debug_handlers::handle_set_filtered_global_anchor_confidence_gain},
+        {"set_filtered_global_position_anchor_confidence_gain(uint16_t:gain_permille)", debug_handlers::handle_set_filtered_global_position_anchor_confidence_gain},
         {"get_voltage_debug()", debug_handlers::handle_get_voltage_debug},
         {"run_mission_part_test()", debug_handlers::handle_run_mission_part_test},
         {"run_position_capture_test()", debug_handlers::handle_run_position_capture_test}

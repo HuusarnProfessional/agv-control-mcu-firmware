@@ -7,6 +7,13 @@
 
 namespace global_reference_selector
 {
+    enum class anchor_type : std::uint8_t
+    {
+        none = 0U,
+        heading_transform = 1U,
+        position_only = 2U
+    };
+
     struct current_reference_snapshot
     {
         bool has_reference = false;
@@ -18,6 +25,7 @@ namespace global_reference_selector
     struct branch_request
     {
         bool has_request = false;
+        anchor_type type = anchor_type::none;
         std::uint16_t pose_id = 0U;
         std::uint8_t branch_id = 0U;
         std::uint16_t reference_confidence = 0U;
@@ -26,6 +34,7 @@ namespace global_reference_selector
     struct reference_activation
     {
         bool has_activation = false;
+        anchor_type type = anchor_type::none;
         bool is_initial_reference = false;
         bool is_mission_seed = false;
         std::uint16_t source_pose_id = 0U;
@@ -52,6 +61,8 @@ namespace global_reference_selector
         std::uint16_t candidate_anchor_heading_confidence = 0U;
         std::uint16_t candidate_anchor_adjusted_heading_confidence = 0U;
         std::uint16_t candidate_anchor_confidence = 0U;
+        std::uint16_t candidate_position_anchor_confidence = 0U;
+        anchor_type candidate_anchor_type = anchor_type::none;
         std::int32_t candidate_anchor_heading_delta_urad = 0;
         bool candidate_anchor_heading_consistent = false;
         std::uint16_t required_anchor_confidence = 0U;
