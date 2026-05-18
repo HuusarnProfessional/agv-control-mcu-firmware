@@ -62,9 +62,9 @@ namespace
         pure_pursuit::stop();
     }
 
-    void abort_mission_and_reset()
+    void abort_mission_and_reset(mission_runner::abort_reason reason)
     {
-        mission_runner::abort_mission();
+        mission_runner::abort_mission(reason);
         reset_part_execution_state();
         log_fail("abort_mission_and_reset");
     }
@@ -152,7 +152,7 @@ namespace
                 (motion_primitive_status_monitor::was_successful() == false))
             {
                 log_fail("tick_waiting_before_path_start primitive");
-                abort_mission_and_reset();
+                abort_mission_and_reset(mission_runner::abort_reason::motion_primitive_failed);
                 return;
             }
 
@@ -164,7 +164,7 @@ namespace
 
         if (continued_ok == false)
         {
-            abort_mission_and_reset();
+            abort_mission_and_reset(mission_runner::abort_reason::end_command_failed);
         }
     }
 
@@ -185,7 +185,7 @@ namespace
         if (path_snapshot.success == false)
         {
             log_fail("path_running");
-            abort_mission_and_reset();
+            abort_mission_and_reset(mission_runner::abort_reason::path_failed);
             return;
         }
 
@@ -196,7 +196,7 @@ namespace
         if (end_command_ok == false)
         {
             log_fail("end_command");
-            abort_mission_and_reset();
+            abort_mission_and_reset(mission_runner::abort_reason::end_command_failed);
             return;
         }
 
@@ -206,7 +206,7 @@ namespace
 
         if (complete_ok == false)
         {
-            abort_mission_and_reset();
+            abort_mission_and_reset(mission_runner::abort_reason::part_complete_failed);
             return;
         }
 
@@ -238,7 +238,7 @@ namespace
                 (motion_primitive_status_monitor::was_successful() == false))
             {
                 log_fail("tick_waiting_before_part_complete primitive");
-                abort_mission_and_reset();
+                abort_mission_and_reset(mission_runner::abort_reason::motion_primitive_failed);
                 return;
             }
 
@@ -249,7 +249,7 @@ namespace
 
         if (complete_ok == false)
         {
-            abort_mission_and_reset();
+            abort_mission_and_reset(mission_runner::abort_reason::part_complete_failed);
             return;
         }
 
@@ -263,7 +263,7 @@ namespace
         if (has_part_info == false)
         {
             log_fail("get_part_info");
-            abort_mission_and_reset();
+            abort_mission_and_reset(mission_runner::abort_reason::part_info_missing);
             return;
         }
 
@@ -273,7 +273,7 @@ namespace
         if (start_command_ok == false)
         {
             log_fail("start_command");
-            abort_mission_and_reset();
+            abort_mission_and_reset(mission_runner::abort_reason::start_command_failed);
             return;
         }
 
@@ -299,7 +299,7 @@ namespace
 
         if (continued_ok == false)
         {
-            abort_mission_and_reset();
+            abort_mission_and_reset(mission_runner::abort_reason::end_command_failed);
             return;
         }
 

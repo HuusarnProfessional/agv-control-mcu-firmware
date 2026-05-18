@@ -1,8 +1,13 @@
 #include "mission_runner.hpp"
 
 #include <Arduino.h>
+
+#include <cstddef>
+#include <cstdio>
+
 #include "mission_buffer.hpp"
 #include "mission_transfer.hpp"
+#include "../bluetooth_communication/middleware/handlers/handler_helpers.hpp"
 #include "../motion_mcu_communication/outgoing_payloads/service/position_correction_payload.hpp"
 #include "../motion_mcu_communication/state/incoming/incoming_state.hpp"
 #include "../position_sensorfusion/position_sensorfusion_pipeline.hpp"
@@ -36,6 +41,32 @@ namespace
         g_started_this_tick = true;
         g_current_part = 0u;
         clear_pending_start();
+    }
+
+    void send_mission_complete_event(std::uint16_t completed_part, std::uint16_t part_count)
+    {
+        char response[96] = {};
+        const int formatted_length = std::snprintf(response, sizeof(response), "rsp:mission_complete(%u,%u)", static_cast<unsigned int>(completed_part), static_cast<unsigned int>(part_count));
+
+        if ((formatted_length <= 0) || (static_cast<std::size_t>(formatted_length) >= sizeof(response)))
+        {
+            return;
+        }
+
+        (void)handler_helpers::write_response_text(response);
+    }
+
+    void send_mission_aborted_event(std::uint16_t current_part, std::uint16_t part_count, mission_runner::abort_reason reason)
+    {
+        char response[96] = {};
+        const int formatted_length = std::snprintf(response, sizeof(response), "rsp:mission_aborted(%u,%u,%u)", static_cast<unsigned int>(current_part), static_cast<unsigned int>(part_count), static_cast<unsigned int>(reason));
+
+        if ((formatted_length <= 0) || (static_cast<std::size_t>(formatted_length) >= sizeof(response)))
+        {
+            return;
+        }
+
+        (void)handler_helpers::write_response_text(response);
     }
 }
 
@@ -152,14 +183,23 @@ namespace mission_runner
 
     runner_status abort_mission()
     {
+        return abort_mission(abort_reason::manual);
+    }
+
+    runner_status abort_mission(abort_reason reason)
+    {
         if (mission_transfer::has_active_mission() == false)
         {
             return runner_status::no_mission;
         }
 
+        const std::uint16_t current_part = g_current_part;
+        const std::uint16_t part_count = mission_buffer::part_count();
+
         g_is_running = false;
         g_current_part = 0u;
         clear_pending_start();
+        send_mission_aborted_event(current_part, part_count, reason);
 
         return runner_status::ok;
     }
@@ -211,6 +251,7 @@ namespace mission_runner
             g_is_running = false;
             g_current_part = 0u;
             Serial.println("mission completed");
+            send_mission_complete_event(0U, part_count);
            
             return true;
         }
@@ -223,6 +264,7 @@ namespace mission_runner
 
         g_is_running = false;
         Serial.println("mission completed");
+        send_mission_complete_event(g_current_part, part_count);
         
         return true;
     }

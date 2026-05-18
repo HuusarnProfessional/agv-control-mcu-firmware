@@ -18,6 +18,7 @@ namespace
         {"get_speed()", incoming_request_handlers::handle_get_speed},
         {"get_position_local()", incoming_request_handlers::handle_get_position_local},
         {"get_position_sensorfusion()", incoming_request_handlers::handle_get_position_sensorfusion},
+        {"get_position_filtered_global()", incoming_request_handlers::handle_get_position_filtered_global},
         {"get_position_global()", incoming_request_handlers::handle_get_position_global},
         {"set_position_local_reset()", incoming_request_handlers::handle_set_position_local_reset},
         {"set_armed(bool:is_armed)", incoming_request_handlers::handle_set_armed},
@@ -99,6 +100,7 @@ namespace
         {"set_position_sensorfusion_bypass(bool:enabled)", debug_handlers::handle_set_position_sensorfusion_bypass},
         {"set_position_sensorfusion_local_only(bool:enabled)", debug_handlers::handle_set_position_sensorfusion_local_only},
         {"set_position_sensorfusion_global_anchor_test(bool:enabled)", debug_handlers::handle_set_position_sensorfusion_global_anchor_test},
+        {"set_filtered_global_anchor_confidence_gain(uint16_t:gain_permille)", debug_handlers::handle_set_filtered_global_anchor_confidence_gain},
         {"get_voltage_debug()", debug_handlers::handle_get_voltage_debug},
         {"run_mission_part_test()", debug_handlers::handle_run_mission_part_test},
         {"run_position_capture_test()", debug_handlers::handle_run_position_capture_test}

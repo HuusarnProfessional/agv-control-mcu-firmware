@@ -14,6 +14,17 @@ namespace mission_runner
         not_running
     };
 
+    enum class abort_reason : std::uint8_t
+    {
+        manual = 0,
+        path_failed = 1,
+        start_command_failed = 2,
+        end_command_failed = 3,
+        motion_primitive_failed = 4,
+        part_complete_failed = 5,
+        part_info_missing = 6
+    };
+
     struct snapshot
     {
         bool is_running = false;
@@ -36,6 +47,8 @@ namespace mission_runner
     runner_status start_mission(const char *mission_id);
 
     runner_status abort_mission();
+
+    runner_status abort_mission(abort_reason reason);
 
     bool is_running();
 

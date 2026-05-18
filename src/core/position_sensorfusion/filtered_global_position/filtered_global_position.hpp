@@ -64,6 +64,10 @@ namespace filtered_global_position
 
     void init();
 
+    bool set_candidate_anchor_heading_confidence_gain_permille(std::uint16_t gain_permille);
+
+    std::uint16_t get_candidate_anchor_heading_confidence_gain_permille();
+
     output_snapshot update(std::uint32_t now_ms, const motion_mcu_incoming_state::local_position_state &local_position);
 
     output_snapshot read_output(std::uint32_t now_ms);

@@ -54,7 +54,8 @@ namespace
     constexpr std::uint32_t huber_pca_good_residual_um = 20000U;
     constexpr std::uint32_t huber_pca_zero_residual_um = 120000U;
     constexpr std::uint8_t huber_pca_iteration_count = 6U;
-    constexpr std::uint16_t candidate_anchor_heading_confidence_gain_permille = 3500U;
+    constexpr std::uint16_t default_candidate_anchor_heading_confidence_gain_permille = 3500U;
+    constexpr std::uint16_t maximum_candidate_anchor_heading_confidence_gain_permille = 10000U;
 
     constexpr std::uint32_t position_confidence_full_age_ms = 250U;
     constexpr std::uint32_t position_confidence_zero_age_ms = 2500U;
@@ -154,6 +155,7 @@ namespace
     filtered_global_position::output_snapshot latest_output = {};
     bool has_last_sample_id = false;
     std::uint32_t last_sample_id = 0U;
+    std::uint16_t candidate_anchor_heading_confidence_gain_permille = default_candidate_anchor_heading_confidence_gain_permille;
 
     std::uint32_t get_age_ms(std::uint32_t now_ms, std::uint32_t start_time_ms)
     {
@@ -1618,6 +1620,23 @@ namespace filtered_global_position
         latest_output = {};
         has_last_sample_id = false;
         last_sample_id = 0U;
+        candidate_anchor_heading_confidence_gain_permille = default_candidate_anchor_heading_confidence_gain_permille;
+    }
+
+    bool set_candidate_anchor_heading_confidence_gain_permille(std::uint16_t gain_permille)
+    {
+        if (gain_permille > maximum_candidate_anchor_heading_confidence_gain_permille)
+        {
+            return false;
+        }
+
+        candidate_anchor_heading_confidence_gain_permille = gain_permille;
+        return true;
+    }
+
+    std::uint16_t get_candidate_anchor_heading_confidence_gain_permille()
+    {
+        return candidate_anchor_heading_confidence_gain_permille;
     }
 
     output_snapshot update(std::uint32_t now_ms, const motion_mcu_incoming_state::local_position_state &local_position)
