@@ -1,7 +1,11 @@
 #include "local_to_global_transform.hpp"
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <cstdio>
+
+#include "../../bluetooth_communication/middleware/handlers/handler_helpers.hpp"
 
 namespace
 {
@@ -71,6 +75,43 @@ namespace
         return static_cast<std::int32_t>(std::llround(value * 1000000.0));
     }
 
+    std::uint32_t bool_to_u32(bool value)
+    {
+        if (value == true)
+        {
+            return 1U;
+        }
+
+        return 0U;
+    }
+
+    void send_anchor_event_response(const local_to_global_transform::anchor_event_snapshot &event)
+    {
+        char response[240] = {};
+        const int length = std::snprintf(
+            response,
+            sizeof(response),
+            "rsp:anchor_event(%lu,%lu,%lu,%u,%u,%u,%lu,%ld,%ld,%ld,%ld)",
+            static_cast<unsigned long>(event.event_id),
+            static_cast<unsigned long>(bool_to_u32(event.is_initial_reference)),
+            static_cast<unsigned long>(bool_to_u32(event.is_mission_seed)),
+            static_cast<unsigned>(event.source_pose_id),
+            static_cast<unsigned>(event.source_branch_id),
+            static_cast<unsigned>(event.reference_confidence),
+            static_cast<unsigned long>(event.reference_sample_id),
+            static_cast<long>(event.global_reference_x_um / 1000LL),
+            static_cast<long>(event.global_reference_y_um / 1000LL),
+            static_cast<long>(event.global_reference_heading_urad),
+            static_cast<long>(event.rotation_urad));
+
+        if ((length <= 0) || (static_cast<std::size_t>(length) >= sizeof(response)))
+        {
+            return;
+        }
+
+        (void)handler_helpers::write_response_text(response);
+    }
+
     void store_anchor_event(const global_reference_selector::reference_activation &activation)
     {
         const double rotation_rad = static_cast<double>(active_transform.rotation_urad) / 1000000.0;
@@ -95,6 +136,9 @@ namespace
         latest_anchor_event.rotation_urad = active_transform.rotation_urad;
         latest_anchor_event.matrix_cos_ppm = calculate_matrix_value_ppm(cos_rotation);
         latest_anchor_event.matrix_sin_ppm = calculate_matrix_value_ppm(sin_rotation);
+
+        send_anchor_event_response(latest_anchor_event);
+
         next_anchor_event_id++;
     }
 

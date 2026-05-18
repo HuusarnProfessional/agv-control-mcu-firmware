@@ -12,6 +12,10 @@ namespace
     constexpr std::uint32_t pending_request_timeout_ms = 3000U;
     constexpr std::uint32_t settling_time_ms = 500U;
     constexpr std::uint16_t maximum_reference_pose_age_steps = 2048U;
+    constexpr std::int64_t anchor_safe_min_x_um = 400000;
+    constexpr std::int64_t anchor_safe_max_x_um = 5000000;
+    constexpr std::int64_t anchor_safe_min_y_um = 400000;
+    constexpr std::int64_t anchor_safe_max_y_um = 3200000;
     constexpr std::int32_t pi_urad = 3141593;
     constexpr std::int32_t two_pi_urad = 6283185;
     constexpr std::int32_t maximum_anchor_heading_delta_urad = 523599;
@@ -20,6 +24,7 @@ namespace
     constexpr std::uint8_t request_reason_switch_margin = 2U;
     constexpr std::uint8_t request_reason_pending_margin = 3U;
     constexpr std::uint8_t request_reason_heading_mismatch = 4U;
+    constexpr std::uint8_t request_reason_anchor_outside_safe_area = 5U;
 
     struct pending_reference_state
     {
@@ -112,7 +117,7 @@ namespace
         return false;
     }
 
-    bool global_position_can_be_reference(const filtered_global_position::output_snapshot &global_position)
+    bool global_position_has_anchor_reference_shape(const filtered_global_position::output_snapshot &global_position)
     {
         if (global_position.has_position == false)
         {
@@ -150,6 +155,61 @@ namespace
         }
 
         return true;
+    }
+
+    bool anchor_reference_is_inside_safe_area(const filtered_global_position::output_snapshot &global_position)
+    {
+        if (global_position.heading_reference_x_um < anchor_safe_min_x_um)
+        {
+            return false;
+        }
+
+        if (global_position.heading_reference_x_um > anchor_safe_max_x_um)
+        {
+            return false;
+        }
+
+        if (global_position.heading_reference_y_um < anchor_safe_min_y_um)
+        {
+            return false;
+        }
+
+        if (global_position.heading_reference_y_um > anchor_safe_max_y_um)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool global_position_can_be_reference(const filtered_global_position::output_snapshot &global_position)
+    {
+        if (global_position_has_anchor_reference_shape(global_position) == false)
+        {
+            return false;
+        }
+
+        if (anchor_reference_is_inside_safe_area(global_position) == false)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool global_position_is_anchor_candidate_outside_safe_area(const filtered_global_position::output_snapshot &global_position)
+    {
+        if (global_position_has_anchor_reference_shape(global_position) == false)
+        {
+            return false;
+        }
+
+        if (anchor_reference_is_inside_safe_area(global_position) == false)
+        {
+            return true;
+        }
+
+        return false;
     }
 
     std::uint16_t calculate_candidate_anchor_confidence(const filtered_global_position::output_snapshot &global_position)
@@ -462,6 +522,11 @@ namespace global_reference_selector
         const std::int32_t candidate_anchor_heading_delta_urad = calculate_candidate_anchor_heading_delta_urad(global_position, current_reference);
         const bool candidate_anchor_heading_consistent = candidate_anchor_heading_is_consistent(candidate_anchor_heading_delta_urad, current_reference);
         output_snapshot output = build_output(local_position, global_position, local_reference_confidence, candidate_anchor_confidence, normal_required_anchor_confidence, candidate_anchor_heading_delta_urad, candidate_anchor_heading_consistent);
+
+        if (global_position_is_anchor_candidate_outside_safe_area(global_position) == true)
+        {
+            output.request_reason = request_reason_anchor_outside_safe_area;
+        }
 
         if (local_position.has_pose == false)
         {

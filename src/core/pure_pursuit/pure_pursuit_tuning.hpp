@@ -13,9 +13,9 @@ namespace pure_pursuit_tuning
     constexpr double k_mission_lookahead_mm = 230.0;
     constexpr double k_mission_goal_tolerance_mm = 120.0;
     constexpr double k_mission_speed_slowdown_heading_error_deg = 20.0;
-    constexpr double k_mission_turn_only_heading_error_deg = 60.0;
+    constexpr double k_mission_turn_only_heading_error_deg = 50.0;
     constexpr double k_mission_min_driveable_target_distance_mm = 120.0;
-    constexpr double k_mission_min_driveable_forward_mm = 40.0;
+    constexpr double k_mission_min_driveable_forward_mm = 30.0;
     constexpr double k_mission_min_turn_radius_mm = 180.0;
     constexpr double k_mission_driveable_target_scan_start_mm = 100.0;
     constexpr double k_mission_driveable_target_scan_step_mm = 45.0;
