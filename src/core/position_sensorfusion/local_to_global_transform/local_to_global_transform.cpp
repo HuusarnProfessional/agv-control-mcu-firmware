@@ -238,6 +238,7 @@ namespace
         }
 
         output.has_transform = true;
+        output.rotation_urad = active_transform.rotation_urad;
         output.branch_matches = local_position.branch_id == active_transform.branch_id;
 
         if (output.branch_matches == false)

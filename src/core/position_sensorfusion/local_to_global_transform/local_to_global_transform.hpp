@@ -17,6 +17,7 @@ namespace local_to_global_transform
         std::int64_t x_um = 0;
         std::int64_t y_um = 0;
         std::int32_t heading_urad = 0;
+        std::int32_t rotation_urad = 0;
 
         std::uint16_t confidence_position = 0U;
         std::uint16_t confidence_heading = 0U;

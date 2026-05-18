@@ -59,7 +59,7 @@ namespace
     constexpr std::uint32_t position_anchor_reference_window_ms = 900U;
     constexpr std::uint8_t position_anchor_min_sample_count = 5U;
     constexpr std::uint8_t position_anchor_full_sample_count = 10U;
-    constexpr std::uint8_t position_anchor_max_sample_count = 20U;
+    constexpr std::uint8_t position_anchor_max_sample_count = 25U;
     constexpr std::uint32_t position_anchor_huber_delta_um = 80000U;
     constexpr std::uint32_t position_anchor_good_residual_um = 50000U;
     constexpr std::uint32_t position_anchor_zero_residual_um = 300000U;
@@ -84,6 +84,9 @@ namespace
         std::int64_t z_um = 0;
         std::uint16_t confidence_position = 0U;
         bool has_local_reference = false;
+        std::int64_t local_x_um = 0;
+        std::int64_t local_y_um = 0;
+        std::int32_t local_heading_urad = 0;
         std::uint16_t pose_id = 0U;
         std::uint8_t branch_id = 0U;
     };
@@ -179,6 +182,8 @@ namespace
     std::uint32_t last_sample_id = 0U;
     std::uint16_t candidate_anchor_heading_confidence_gain_permille = default_candidate_anchor_heading_confidence_gain_permille;
     std::uint16_t candidate_position_anchor_confidence_gain_permille = default_candidate_position_anchor_confidence_gain_permille;
+
+    bool calculate_motion_compensated_anchor_reference(const accepted_sample *samples, std::uint8_t sample_count, const accepted_sample &reference_sample, std::int32_t measured_heading_urad, accepted_sample &center_sample_out, std::uint16_t &reference_position_confidence_out, std::uint32_t &median_residual_um_out);
 
     std::uint32_t get_age_ms(std::uint32_t now_ms, std::uint32_t start_time_ms)
     {
@@ -385,6 +390,18 @@ namespace
         return static_cast<std::int64_t>(distance);
     }
 
+    void rotate_local_delta(std::int64_t local_delta_x_um, std::int64_t local_delta_y_um, std::int32_t rotation_urad, std::int64_t &global_delta_x_um, std::int64_t &global_delta_y_um)
+    {
+        const double rotation_rad = static_cast<double>(rotation_urad) / 1000000.0;
+        const double cos_rotation = std::cos(rotation_rad);
+        const double sin_rotation = std::sin(rotation_rad);
+        const double rotated_x_um = (static_cast<double>(local_delta_x_um) * cos_rotation) - (static_cast<double>(local_delta_y_um) * sin_rotation);
+        const double rotated_y_um = (static_cast<double>(local_delta_x_um) * sin_rotation) + (static_cast<double>(local_delta_y_um) * cos_rotation);
+
+        global_delta_x_um = static_cast<std::int64_t>(std::llround(rotated_x_um));
+        global_delta_y_um = static_cast<std::int64_t>(std::llround(rotated_y_um));
+    }
+
     std::int64_t calculate_sample_distance_um(const accepted_sample &older_sample, const accepted_sample &newer_sample)
     {
         const std::int64_t delta_x_um = newer_sample.x_um - older_sample.x_um;
@@ -473,6 +490,9 @@ namespace
         if ((local_position.has_pose == true) && (local_position.branch_id <= 1U) && (local_position.pose_id != 0U))
         {
             converted.has_local_reference = true;
+            converted.local_x_um = local_position.x_um;
+            converted.local_y_um = local_position.y_um;
+            converted.local_heading_urad = local_position.heading_urad;
             converted.pose_id = local_position.pose_id;
             converted.branch_id = local_position.branch_id;
         }
@@ -1106,6 +1126,19 @@ namespace
             return;
         }
 
+        accepted_sample anchor_reference_sample = newest_sample;
+        std::uint16_t anchor_position_confidence = 0U;
+        std::uint32_t anchor_position_residual_um = 0U;
+        accepted_sample anchor_fit_samples[position_anchor_max_sample_count] = {};
+        std::uint8_t anchor_fit_sample_count = 0U;
+
+        for (std::uint8_t index = 0U; (index <= oldest_index) && (anchor_fit_sample_count < position_anchor_max_sample_count); index++)
+        {
+            anchor_fit_samples[anchor_fit_sample_count] = history[index];
+            anchor_fit_sample_count++;
+        }
+
+        const bool has_anchor_reference = calculate_motion_compensated_anchor_reference(anchor_fit_samples, anchor_fit_sample_count, newest_sample, measured_heading_urad, anchor_reference_sample, anchor_position_confidence, anchor_position_residual_um);
         heading_estimate_candidate candidate = {};
 
         candidate.heading_urad = measured_heading_urad;
@@ -1116,17 +1149,17 @@ namespace
         candidate.heading_reference_time_ms = newest_sample.received_time_ms;
         candidate.heading_reference_sample_id = newest_sample.sample_id;
         candidate.heading_estimated_delay_ms = 0U;
-        if (newest_sample.has_local_reference == true)
+        if (has_anchor_reference == true)
         {
             candidate.heading_reference_pose_id = newest_sample.pose_id;
             candidate.heading_reference_branch_id = newest_sample.branch_id;
         }
 
-        candidate.heading_reference_x_um = newest_sample.x_um;
-        candidate.heading_reference_y_um = newest_sample.y_um;
-        candidate.heading_reference_z_um = newest_sample.z_um;
+        candidate.heading_reference_x_um = anchor_reference_sample.x_um;
+        candidate.heading_reference_y_um = anchor_reference_sample.y_um;
+        candidate.heading_reference_z_um = anchor_reference_sample.z_um;
         candidate.heading_fit_residual_um = static_cast<std::uint32_t>(max_line_error_um);
-        candidate.candidate_anchor_position_confidence = newest_sample.confidence_position;
+        candidate.candidate_anchor_position_confidence = anchor_position_confidence;
         candidate.candidate_anchor_heading_confidence = measured_confidence;
         candidate.candidate_anchor_adjusted_heading_confidence = apply_confidence_gain(measured_confidence, candidate_anchor_heading_confidence_gain_permille);
         candidate.candidate_anchor_confidence = smaller_confidence(candidate.candidate_anchor_position_confidence, candidate.candidate_anchor_adjusted_heading_confidence);
@@ -1441,6 +1474,10 @@ namespace
             return;
         }
 
+        accepted_sample anchor_reference_sample = reference_sample;
+        std::uint16_t anchor_position_confidence = 0U;
+        std::uint32_t anchor_position_residual_um = 0U;
+        const bool has_anchor_reference = calculate_motion_compensated_anchor_reference(fit_samples, fit_sample_count, reference_sample, measured_heading_urad, anchor_reference_sample, anchor_position_confidence, anchor_position_residual_um);
         heading_estimate_candidate candidate = {};
 
         candidate.heading_urad = measured_heading_urad;
@@ -1451,17 +1488,17 @@ namespace
         candidate.heading_reference_time_ms = reference_sample.received_time_ms;
         candidate.heading_reference_sample_id = reference_sample.sample_id;
         candidate.heading_estimated_delay_ms = huber_pca_heading_estimated_delay_ms;
-        if (reference_sample.has_local_reference == true)
+        if (has_anchor_reference == true)
         {
             candidate.heading_reference_pose_id = reference_sample.pose_id;
             candidate.heading_reference_branch_id = reference_sample.branch_id;
         }
 
-        candidate.heading_reference_x_um = reference_sample.x_um;
-        candidate.heading_reference_y_um = reference_sample.y_um;
-        candidate.heading_reference_z_um = reference_sample.z_um;
+        candidate.heading_reference_x_um = anchor_reference_sample.x_um;
+        candidate.heading_reference_y_um = anchor_reference_sample.y_um;
+        candidate.heading_reference_z_um = anchor_reference_sample.z_um;
         candidate.heading_fit_residual_um = median_residual_um;
-        candidate.candidate_anchor_position_confidence = reference_sample.confidence_position;
+        candidate.candidate_anchor_position_confidence = anchor_position_confidence;
         candidate.candidate_anchor_heading_confidence = measured_confidence;
         candidate.candidate_anchor_adjusted_heading_confidence = apply_confidence_gain(measured_confidence, candidate_anchor_heading_confidence_gain_permille);
         candidate.candidate_anchor_confidence = smaller_confidence(candidate.candidate_anchor_position_confidence, candidate.candidate_anchor_adjusted_heading_confidence);
@@ -1488,6 +1525,14 @@ namespace
         }
     }
 
+    void clear_position_anchor_candidate()
+    {
+        stable.candidate_position_anchor_confidence = 0U;
+        stable.position_anchor_sample_count = 0U;
+        stable.position_anchor_median_residual_um = 0U;
+        stable.position_anchor_window_age_ms = 0U;
+    }
+
     std::uint8_t collect_position_anchor_samples(accepted_sample *samples_out)
     {
         if (history_count == 0U)
@@ -1503,6 +1548,11 @@ namespace
             const accepted_sample sample = history[index];
 
             if (sample.valid == false)
+            {
+                continue;
+            }
+
+            if (sample.has_local_reference == false)
             {
                 continue;
             }
@@ -1559,6 +1609,16 @@ namespace
 
         for (std::uint8_t index = 0U; index < sample_count; index++)
         {
+            if (samples[index].has_local_reference == false)
+            {
+                continue;
+            }
+
+            if (samples[index].branch_id != reference_sample.branch_id)
+            {
+                continue;
+            }
+
             const std::uint32_t time_error_ms = absolute_time_difference_ms(samples[index].received_time_ms, reference_sample.received_time_ms);
 
             if (time_error_ms > position_anchor_reference_window_ms)
@@ -1709,17 +1769,100 @@ namespace
         return true;
     }
 
-    void update_position_anchor_from_history()
+    void build_motion_compensated_position_anchor_samples(const accepted_sample *samples, std::uint8_t sample_count, const accepted_sample &reference_sample, std::int32_t reference_rotation_urad, accepted_sample *samples_out)
+    {
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            const std::int64_t local_delta_x_um = samples[index].local_x_um - reference_sample.local_x_um;
+            const std::int64_t local_delta_y_um = samples[index].local_y_um - reference_sample.local_y_um;
+            std::int64_t global_delta_x_um = 0;
+            std::int64_t global_delta_y_um = 0;
+
+            rotate_local_delta(local_delta_x_um, local_delta_y_um, reference_rotation_urad, global_delta_x_um, global_delta_y_um);
+
+            samples_out[index] = samples[index];
+            samples_out[index].x_um = samples[index].x_um - global_delta_x_um;
+            samples_out[index].y_um = samples[index].y_um - global_delta_y_um;
+        }
+    }
+
+    bool calculate_motion_compensated_anchor_reference(const accepted_sample *samples, std::uint8_t sample_count, const accepted_sample &reference_sample, std::int32_t measured_heading_urad, accepted_sample &center_sample_out, std::uint16_t &reference_position_confidence_out, std::uint32_t &median_residual_um_out)
+    {
+        reference_position_confidence_out = 0U;
+        median_residual_um_out = 0U;
+
+        if (reference_sample.has_local_reference == false)
+        {
+            return false;
+        }
+
+        const std::int32_t reference_rotation_urad = normalize_angle_urad(measured_heading_urad - reference_sample.local_heading_urad);
+        accepted_sample usable_samples[position_anchor_max_sample_count] = {};
+        std::uint8_t usable_sample_count = 0U;
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            if (samples[index].valid == false)
+            {
+                continue;
+            }
+
+            if (samples[index].has_local_reference == false)
+            {
+                continue;
+            }
+
+            if (samples[index].branch_id != reference_sample.branch_id)
+            {
+                continue;
+            }
+
+            usable_samples[usable_sample_count] = samples[index];
+            usable_sample_count++;
+
+            if (usable_sample_count >= position_anchor_max_sample_count)
+            {
+                break;
+            }
+        }
+
+        if (usable_sample_count < position_anchor_min_sample_count)
+        {
+            return false;
+        }
+
+        accepted_sample compensated_samples[position_anchor_max_sample_count] = {};
+        build_motion_compensated_position_anchor_samples(usable_samples, usable_sample_count, reference_sample, reference_rotation_urad, compensated_samples);
+
+        accepted_sample center_sample = reference_sample;
+
+        if (calculate_position_anchor_center(compensated_samples, usable_sample_count, center_sample, median_residual_um_out) == false)
+        {
+            return false;
+        }
+
+        const std::uint16_t sample_count_confidence = sample_count_to_confidence(usable_sample_count, position_anchor_min_sample_count, position_anchor_full_sample_count);
+        const std::uint16_t position_confidence = calculate_position_anchor_samples_confidence(compensated_samples, usable_sample_count);
+        const std::uint16_t residual_confidence = range_to_confidence(median_residual_um_out, position_anchor_good_residual_um, position_anchor_zero_residual_um);
+        std::uint16_t reference_confidence = sample_count_confidence;
+
+        reference_confidence = smaller_confidence(reference_confidence, position_confidence);
+        reference_confidence = smaller_confidence(reference_confidence, residual_confidence);
+
+        center_sample_out = center_sample;
+        reference_position_confidence_out = reference_confidence;
+
+        return true;
+    }
+
+    void update_position_anchor_from_history(std::int32_t reference_rotation_urad)
     {
         accepted_sample samples[position_anchor_max_sample_count] = {};
         const std::uint8_t collected_sample_count = collect_position_anchor_samples(samples);
 
         if (collected_sample_count < position_anchor_min_sample_count)
         {
-            stable.candidate_position_anchor_confidence = 0U;
-            stable.position_anchor_sample_count = 0U;
-            stable.position_anchor_median_residual_um = 0U;
-            stable.position_anchor_window_age_ms = 0U;
+            clear_position_anchor_candidate();
             return;
         }
 
@@ -1727,10 +1870,7 @@ namespace
 
         if (find_position_anchor_reference_index(samples, collected_sample_count, reference_index) == false)
         {
-            stable.candidate_position_anchor_confidence = 0U;
-            stable.position_anchor_sample_count = 0U;
-            stable.position_anchor_median_residual_um = 0U;
-            stable.position_anchor_window_age_ms = 0U;
+            clear_position_anchor_candidate();
             return;
         }
 
@@ -1747,10 +1887,13 @@ namespace
             return;
         }
 
+        accepted_sample compensated_samples[position_anchor_max_sample_count] = {};
+        build_motion_compensated_position_anchor_samples(fit_samples, fit_sample_count, reference_sample, reference_rotation_urad, compensated_samples);
+
         accepted_sample center_sample = reference_sample;
         std::uint32_t median_residual_um = 0U;
 
-        if (calculate_position_anchor_center(fit_samples, fit_sample_count, center_sample, median_residual_um) == false)
+        if (calculate_position_anchor_center(compensated_samples, fit_sample_count, center_sample, median_residual_um) == false)
         {
             stable.candidate_position_anchor_confidence = 0U;
             stable.position_anchor_sample_count = fit_sample_count;
@@ -1760,7 +1903,7 @@ namespace
         }
 
         const std::uint16_t sample_count_confidence = sample_count_to_confidence(fit_sample_count, position_anchor_min_sample_count, position_anchor_full_sample_count);
-        const std::uint16_t position_confidence = calculate_position_anchor_samples_confidence(fit_samples, fit_sample_count);
+        const std::uint16_t position_confidence = calculate_position_anchor_samples_confidence(compensated_samples, fit_sample_count);
         const std::uint16_t residual_confidence = range_to_confidence(median_residual_um, position_anchor_good_residual_um, position_anchor_zero_residual_um);
         std::uint16_t anchor_confidence = sample_count_confidence;
 
@@ -1801,7 +1944,7 @@ namespace
         }
 
         push_history(sample);
-        update_position_anchor_from_history();
+        clear_position_anchor_candidate();
         clear_bootstrap();
     }
 
@@ -1842,7 +1985,7 @@ namespace
         smoothed_sample.z_um = stable.z_um;
         smoothed_sample.confidence_position = filtered_confidence;
         push_history(smoothed_sample);
-        update_position_anchor_from_history();
+        clear_position_anchor_candidate();
         update_heading_from_history();
     }
 
@@ -1920,6 +2063,23 @@ namespace
 
         latest_output = output;
         return latest_output;
+    }
+
+    filtered_global_position::output_snapshot rebuild_latest_output(std::uint32_t now_ms, bool preserve_sample_event_flags)
+    {
+        accepted_sample latest_sample = {};
+        latest_sample.sample_id = latest_output.sample_id;
+        latest_sample.request_id = latest_output.request_id;
+        latest_sample.received_time_ms = latest_output.received_time_ms;
+        latest_sample.confidence_position = latest_output.raw_confidence_position;
+
+        const bool is_new_sample = preserve_sample_event_flags == true ? latest_output.is_new_sample : false;
+        const bool accepted = preserve_sample_event_flags == true ? latest_output.accepted : false;
+        const bool rejected = preserve_sample_event_flags == true ? latest_output.rejected : false;
+        const std::uint16_t raw_confidence = latest_output.raw_confidence_position;
+        const std::uint16_t history_confidence = latest_output.history_confidence;
+
+        return build_output(now_ms, is_new_sample, accepted, rejected, latest_sample, raw_confidence, history_confidence);
     }
 
     filtered_global_position::output_snapshot reject_sample(std::uint32_t now_ms, const accepted_sample &sample, std::uint16_t raw_confidence, std::uint16_t history_confidence)
@@ -2066,14 +2226,20 @@ namespace filtered_global_position
         return process_new_sample(now_ms, api_sample, local_position);
     }
 
+    output_snapshot update_position_anchor_reference(std::uint32_t now_ms, bool has_reference_rotation, std::int32_t reference_rotation_urad)
+    {
+        if (has_reference_rotation == false)
+        {
+            clear_position_anchor_candidate();
+            return rebuild_latest_output(now_ms, true);
+        }
+
+        update_position_anchor_from_history(reference_rotation_urad);
+        return rebuild_latest_output(now_ms, true);
+    }
+
     output_snapshot read_output(std::uint32_t now_ms)
     {
-        accepted_sample latest_sample = {};
-        latest_sample.sample_id = latest_output.sample_id;
-        latest_sample.request_id = latest_output.request_id;
-        latest_sample.received_time_ms = latest_output.received_time_ms;
-        latest_sample.confidence_position = latest_output.raw_confidence_position;
-
-        return build_output(now_ms, false, false, false, latest_sample, latest_output.raw_confidence_position, latest_output.history_confidence);
+        return rebuild_latest_output(now_ms, false);
     }
 }

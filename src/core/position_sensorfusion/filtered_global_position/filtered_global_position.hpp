@@ -85,5 +85,7 @@ namespace filtered_global_position
 
     output_snapshot update(std::uint32_t now_ms, const motion_mcu_incoming_state::local_position_state &local_position);
 
+    output_snapshot update_position_anchor_reference(std::uint32_t now_ms, bool has_reference_rotation, std::int32_t reference_rotation_urad);
+
     output_snapshot read_output(std::uint32_t now_ms);
 }
