@@ -53,6 +53,10 @@ namespace local_to_global_transform
         std::int32_t rotation_urad = 0;
         std::int32_t matrix_cos_ppm = 0;
         std::int32_t matrix_sin_ppm = 0;
+        bool has_position_jump = false;
+        std::int64_t position_jump_x_um = 0;
+        std::int64_t position_jump_y_um = 0;
+        std::int32_t heading_jump_urad = 0;
     };
 
     void init();

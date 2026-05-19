@@ -44,6 +44,10 @@ namespace filtered_global_position
         std::int64_t position_reference_x_um = 0;
         std::int64_t position_reference_y_um = 0;
         std::int64_t position_reference_z_um = 0;
+        bool position_reference_has_local_reference = false;
+        std::int64_t position_reference_local_x_um = 0;
+        std::int64_t position_reference_local_y_um = 0;
+        std::int32_t position_reference_local_heading_urad = 0;
         std::uint8_t position_anchor_sample_count = 0U;
         std::uint32_t position_anchor_median_residual_um = 0U;
         std::uint32_t position_anchor_window_age_ms = 0U;

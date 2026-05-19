@@ -19,7 +19,12 @@ namespace global_reference_selector
         bool has_reference = false;
         bool has_heading = false;
         std::uint8_t branch_id = 0U;
+        std::int64_t x_um = 0;
+        std::int64_t y_um = 0;
+        std::int64_t local_x_um = 0;
+        std::int64_t local_y_um = 0;
         std::int32_t heading_urad = 0;
+        std::int32_t rotation_urad = 0;
     };
 
     struct branch_request
@@ -72,6 +77,14 @@ namespace global_reference_selector
     void init();
 
     void reset_runtime_state();
+
+    void set_heading_anchor_enabled(bool enabled);
+
+    bool is_heading_anchor_enabled();
+
+    void set_position_anchor_enabled(bool enabled);
+
+    bool is_position_anchor_enabled();
 
     output_snapshot update(const motion_mcu_incoming_state::local_position_state &local_position, const filtered_global_position::output_snapshot &global_position, const current_reference_snapshot &current_reference, std::uint32_t now_ms);
 

@@ -1,5 +1,6 @@
 #include "global_reference_selector.hpp"
 
+#include <cmath>
 #include <cstdint>
 
 namespace
@@ -25,6 +26,9 @@ namespace
     constexpr std::uint8_t request_reason_pending_margin = 3U;
     constexpr std::uint8_t request_reason_heading_mismatch = 4U;
     constexpr std::uint8_t request_reason_anchor_outside_safe_area = 5U;
+    constexpr std::uint8_t request_reason_pending_locked = 6U;
+    constexpr std::uint8_t request_reason_anchor_jump_too_large = 7U;
+    constexpr std::int64_t maximum_anchor_position_jump_um = 250000;
 
     struct pending_reference_state
     {
@@ -45,6 +49,8 @@ namespace
     std::uint32_t last_request_global_sample_id = 0U;
     std::uint16_t last_request_confidence = 0U;
     global_reference_selector::output_snapshot latest_output = {};
+    bool heading_anchor_enabled = true;
+    bool position_anchor_enabled = true;
 
     std::uint32_t get_age_ms(std::uint32_t now_ms, std::uint32_t start_time_ms)
     {
@@ -225,6 +231,11 @@ namespace
 
     bool global_position_can_be_heading_reference(const filtered_global_position::output_snapshot &global_position)
     {
+        if (heading_anchor_enabled == false)
+        {
+            return false;
+        }
+
         if (global_position_has_heading_anchor_shape(global_position) == false)
         {
             return false;
@@ -240,6 +251,11 @@ namespace
 
     bool global_position_can_be_position_reference(const filtered_global_position::output_snapshot &global_position)
     {
+        if (position_anchor_enabled == false)
+        {
+            return false;
+        }
+
         if (global_position_has_position_anchor_shape(global_position) == false)
         {
             return false;
@@ -272,6 +288,73 @@ namespace
         }
 
         return false;
+    }
+
+    bool candidate_anchor_position_jump_is_safe(const filtered_global_position::output_snapshot &global_position, global_reference_selector::anchor_type type, const global_reference_selector::current_reference_snapshot &current_reference)
+    {
+        if (current_reference.has_reference == false)
+        {
+            return true;
+        }
+
+        std::int64_t projected_x_um = type == global_reference_selector::anchor_type::position_only ? global_position.position_reference_x_um : global_position.heading_reference_x_um;
+        std::int64_t projected_y_um = type == global_reference_selector::anchor_type::position_only ? global_position.position_reference_y_um : global_position.heading_reference_y_um;
+
+        if (type == global_reference_selector::anchor_type::position_only)
+        {
+            if (global_position.position_reference_has_local_reference == false)
+            {
+                return false;
+            }
+
+            const std::int64_t local_delta_x_um = current_reference.local_x_um - global_position.position_reference_local_x_um;
+            const std::int64_t local_delta_y_um = current_reference.local_y_um - global_position.position_reference_local_y_um;
+            const double rotation_rad = static_cast<double>(current_reference.rotation_urad) / 1000000.0;
+            const double cos_rotation = std::cos(rotation_rad);
+            const double sin_rotation = std::sin(rotation_rad);
+            const double rotated_x_um = (static_cast<double>(local_delta_x_um) * cos_rotation) - (static_cast<double>(local_delta_y_um) * sin_rotation);
+            const double rotated_y_um = (static_cast<double>(local_delta_x_um) * sin_rotation) + (static_cast<double>(local_delta_y_um) * cos_rotation);
+
+            projected_x_um = global_position.position_reference_x_um + static_cast<std::int64_t>(rotated_x_um);
+            projected_y_um = global_position.position_reference_y_um + static_cast<std::int64_t>(rotated_y_um);
+        }
+
+        const std::int64_t delta_x_um = projected_x_um - current_reference.x_um;
+        const std::int64_t delta_y_um = projected_y_um - current_reference.y_um;
+        const double distance_um = std::sqrt((static_cast<double>(delta_x_um) * static_cast<double>(delta_x_um)) + (static_cast<double>(delta_y_um) * static_cast<double>(delta_y_um)));
+
+        if (distance_um > static_cast<double>(maximum_anchor_position_jump_um))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool project_position_anchor_to_current_pose(const filtered_global_position::output_snapshot &global_position, const global_reference_selector::current_reference_snapshot &current_reference, std::int64_t &x_um_out, std::int64_t &y_um_out)
+    {
+        if (current_reference.has_reference == false)
+        {
+            return false;
+        }
+
+        if (global_position.position_reference_has_local_reference == false)
+        {
+            return false;
+        }
+
+        const std::int64_t local_delta_x_um = current_reference.local_x_um - global_position.position_reference_local_x_um;
+        const std::int64_t local_delta_y_um = current_reference.local_y_um - global_position.position_reference_local_y_um;
+        const double rotation_rad = static_cast<double>(current_reference.rotation_urad) / 1000000.0;
+        const double cos_rotation = std::cos(rotation_rad);
+        const double sin_rotation = std::sin(rotation_rad);
+        const double rotated_x_um = (static_cast<double>(local_delta_x_um) * cos_rotation) - (static_cast<double>(local_delta_y_um) * sin_rotation);
+        const double rotated_y_um = (static_cast<double>(local_delta_x_um) * sin_rotation) + (static_cast<double>(local_delta_y_um) * cos_rotation);
+
+        x_um_out = global_position.position_reference_x_um + static_cast<std::int64_t>(rotated_x_um);
+        y_um_out = global_position.position_reference_y_um + static_cast<std::int64_t>(rotated_y_um);
+
+        return true;
     }
 
     std::uint16_t calculate_candidate_heading_anchor_confidence(const filtered_global_position::output_snapshot &global_position)
@@ -537,7 +620,7 @@ namespace
         return activation;
     }
 
-    global_reference_selector::branch_request start_pending_request(const motion_mcu_incoming_state::local_position_state &local_position, const filtered_global_position::output_snapshot &global_position, global_reference_selector::anchor_type type, std::uint16_t reference_confidence, std::uint32_t now_ms)
+    global_reference_selector::branch_request start_pending_request(const motion_mcu_incoming_state::local_position_state &local_position, const filtered_global_position::output_snapshot &global_position, const global_reference_selector::current_reference_snapshot &current_reference, global_reference_selector::anchor_type type, std::uint16_t reference_confidence, std::uint32_t now_ms)
     {
         global_reference_selector::branch_request request = {};
 
@@ -546,7 +629,9 @@ namespace
             return request;
         }
 
-        if (global_reference_pose_can_be_replayed(local_position, global_position, type) == false)
+        const bool current_pose_position_anchor = type == global_reference_selector::anchor_type::position_only;
+
+        if ((current_pose_position_anchor == false) && (global_reference_pose_can_be_replayed(local_position, global_position, type) == false))
         {
             return request;
         }
@@ -558,6 +643,24 @@ namespace
         pending_reference.request_time_ms = now_ms;
         pending_reference.reference_confidence = reference_confidence;
         pending_reference.global_reference = build_anchor_reference(global_position, type);
+
+        if (current_pose_position_anchor == true)
+        {
+            std::int64_t current_anchor_x_um = 0;
+            std::int64_t current_anchor_y_um = 0;
+
+            if (project_position_anchor_to_current_pose(global_position, current_reference, current_anchor_x_um, current_anchor_y_um) == false)
+            {
+                pending_reference = {};
+                return request;
+            }
+
+            pending_reference.source_pose_id = local_position.pose_id;
+            pending_reference.source_branch_id = local_position.branch_id;
+            pending_reference.global_reference.x_um = current_anchor_x_um;
+            pending_reference.global_reference.y_um = current_anchor_y_um;
+            pending_reference.global_reference.received_time_ms = now_ms;
+        }
 
         mark_last_request(global_position, type, reference_confidence, now_ms);
 
@@ -738,35 +841,6 @@ namespace global_reference_selector
 
         if (current_reference.has_reference == false)
         {
-            if (candidate_heading_anchor_confidence < minimum_anchor_confidence)
-            {
-                latest_output = output;
-                return latest_output;
-            }
-
-            if (candidate_anchor_heading_consistent == false)
-            {
-                output.request_reason = request_reason_heading_mismatch;
-                latest_output = output;
-                return latest_output;
-            }
-
-            if ((global_position.heading_reference_pose_id == local_position.pose_id) && (global_position.heading_reference_branch_id == local_position.branch_id))
-            {
-                output.activation = build_initial_activation(local_position, global_position, candidate_heading_anchor_confidence, now_ms);
-                latest_output = output;
-                return latest_output;
-            }
-
-            output.request = start_pending_request(local_position, global_position, anchor_type::heading_transform, candidate_heading_anchor_confidence, now_ms);
-            output.pending = pending_reference.pending;
-            output.pending_pose_id = pending_reference.source_pose_id;
-            output.pending_branch_id = pending_reference.source_branch_id;
-            output.pending_global_sample_id = pending_reference.global_reference.sample_id;
-            if (output.request.has_request == true)
-            {
-                output.request_reason = request_reason_missing_reference;
-            }
             latest_output = output;
             return latest_output;
         }
@@ -780,27 +854,11 @@ namespace global_reference_selector
             output.candidate_anchor_type = selected_type;
             output.candidate_anchor_confidence = selected_confidence;
 
-            if (selected_type == anchor_type::none)
+            if (selected_type != anchor_type::none)
             {
-                latest_output = output;
-                return latest_output;
+                output.request_reason = request_reason_pending_locked;
             }
 
-            if (request_is_allowed_by_interval(selected_confidence, now_ms) == false)
-            {
-                latest_output = output;
-                return latest_output;
-            }
-
-            output.request = start_pending_request(local_position, global_position, selected_type, selected_confidence, now_ms);
-            output.pending = pending_reference.pending;
-            output.pending_pose_id = pending_reference.source_pose_id;
-            output.pending_branch_id = pending_reference.source_branch_id;
-            output.pending_global_sample_id = pending_reference.global_reference.sample_id;
-            if (output.request.has_request == true)
-            {
-                output.request_reason = request_reason_pending_margin;
-            }
             latest_output = output;
             return latest_output;
         }
@@ -817,6 +875,13 @@ namespace global_reference_selector
                 output.request_reason = request_reason_heading_mismatch;
             }
 
+            latest_output = output;
+            return latest_output;
+        }
+
+        if (candidate_anchor_position_jump_is_safe(global_position, selected_type, current_reference) == false)
+        {
+            output.request_reason = request_reason_anchor_jump_too_large;
             latest_output = output;
             return latest_output;
         }
@@ -848,7 +913,7 @@ namespace global_reference_selector
             return latest_output;
         }
 
-        output.request = start_pending_request(local_position, global_position, selected_type, selected_confidence, now_ms);
+        output.request = start_pending_request(local_position, global_position, current_reference, selected_type, selected_confidence, now_ms);
         output.pending = pending_reference.pending;
         output.pending_pose_id = pending_reference.source_pose_id;
         output.pending_branch_id = pending_reference.source_branch_id;
@@ -865,5 +930,25 @@ namespace global_reference_selector
     output_snapshot read_output()
     {
         return latest_output;
+    }
+
+    void set_heading_anchor_enabled(bool enabled)
+    {
+        heading_anchor_enabled = enabled;
+    }
+
+    bool is_heading_anchor_enabled()
+    {
+        return heading_anchor_enabled;
+    }
+
+    void set_position_anchor_enabled(bool enabled)
+    {
+        position_anchor_enabled = enabled;
+    }
+
+    bool is_position_anchor_enabled()
+    {
+        return position_anchor_enabled;
     }
 }

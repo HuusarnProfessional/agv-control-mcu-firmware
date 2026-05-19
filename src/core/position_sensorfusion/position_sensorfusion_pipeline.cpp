@@ -13,10 +13,25 @@
 
 namespace
 {
+    constexpr std::uint32_t sensorfusion_hold_last_valid_ms = 1500U;
+
     bool previous_mission_running = false;
     bool bypass_offset_fusion = false;
     bool local_only_mode = false;
     bool global_anchor_test_mode = false;
+    bool has_last_valid_output = false;
+    std::uint32_t last_valid_output_time_ms = 0U;
+    position_sensorfusion::output_snapshot last_valid_output = {};
+
+    std::uint32_t get_elapsed_ms(std::uint32_t now_ms, std::uint32_t previous_ms)
+    {
+        if (now_ms < previous_ms)
+        {
+            return 0U;
+        }
+
+        return now_ms - previous_ms;
+    }
 
     void send_branch_request_if_needed(const global_reference_selector::output_snapshot &reference_decision)
     {
@@ -44,7 +59,7 @@ namespace
         return output;
     }
 
-    global_reference_selector::current_reference_snapshot convert_current_reference(const local_to_global_transform::output_snapshot &transformed_local_position)
+    global_reference_selector::current_reference_snapshot convert_current_reference(const motion_mcu_incoming_state::local_position_state &local_position, const local_to_global_transform::output_snapshot &transformed_local_position)
     {
         global_reference_selector::current_reference_snapshot reference = {};
 
@@ -54,7 +69,12 @@ namespace
             {
                 reference.has_reference = true;
                 reference.has_heading = transformed_local_position.has_pose;
+                reference.x_um = transformed_local_position.x_um;
+                reference.y_um = transformed_local_position.y_um;
+                reference.local_x_um = local_position.x_um;
+                reference.local_y_um = local_position.y_um;
                 reference.heading_urad = transformed_local_position.heading_urad;
+                reference.rotation_urad = transformed_local_position.rotation_urad;
             }
         }
 
@@ -73,9 +93,35 @@ namespace
             global_reference_selector::reset_runtime_state();
             local_to_global_transform::reset_runtime_state();
             filtered_global_offset_fusion::reset_runtime_state();
+            has_last_valid_output = false;
+            last_valid_output_time_ms = 0U;
+            last_valid_output = {};
         }
 
         previous_mission_running = mission_running;
+    }
+
+    position_sensorfusion::output_snapshot hold_last_valid_output_if_needed(const position_sensorfusion::output_snapshot &output, std::uint32_t now_ms)
+    {
+        if (output.has_pose == true)
+        {
+            has_last_valid_output = true;
+            last_valid_output_time_ms = now_ms;
+            last_valid_output = output;
+            return output;
+        }
+
+        if (has_last_valid_output == false)
+        {
+            return output;
+        }
+
+        if (get_elapsed_ms(now_ms, last_valid_output_time_ms) > sensorfusion_hold_last_valid_ms)
+        {
+            return output;
+        }
+
+        return last_valid_output;
     }
 }
 
@@ -93,12 +139,18 @@ namespace position_sensorfusion_pipeline
         bypass_offset_fusion = false;
         local_only_mode = false;
         global_anchor_test_mode = false;
+        has_last_valid_output = false;
+        last_valid_output_time_ms = 0U;
+        last_valid_output = {};
     }
 
     void set_bypass_offset_fusion(bool enabled)
     {
         bypass_offset_fusion = enabled;
         filtered_global_offset_fusion::reset_runtime_state();
+        has_last_valid_output = false;
+        last_valid_output_time_ms = 0U;
+        last_valid_output = {};
     }
 
     bool is_bypass_offset_fusion_enabled()
@@ -116,6 +168,9 @@ namespace position_sensorfusion_pipeline
         global_reference_selector::reset_runtime_state();
         local_to_global_transform::reset_runtime_state();
         filtered_global_offset_fusion::reset_runtime_state();
+        has_last_valid_output = false;
+        last_valid_output_time_ms = 0U;
+        last_valid_output = {};
         position_sensorfusion::set_output({});
     }
 
@@ -134,6 +189,9 @@ namespace position_sensorfusion_pipeline
         global_reference_selector::reset_runtime_state();
         local_to_global_transform::reset_runtime_state();
         filtered_global_offset_fusion::reset_runtime_state();
+        has_last_valid_output = false;
+        last_valid_output_time_ms = 0U;
+        last_valid_output = {};
         position_sensorfusion::set_output({});
     }
 
@@ -149,7 +207,7 @@ namespace position_sensorfusion_pipeline
         const motion_mcu_incoming_state::local_position_state local_position = motion_mcu_incoming_state::get_local_position();
         filtered_global_position::output_snapshot strong_global_position = filtered_global_position::update(now_ms, local_position);
         const local_to_global_transform::output_snapshot current_transformed_local_position = local_to_global_transform::read_output(local_position, now_ms);
-        const global_reference_selector::current_reference_snapshot current_reference = convert_current_reference(current_transformed_local_position);
+        const global_reference_selector::current_reference_snapshot current_reference = convert_current_reference(local_position, current_transformed_local_position);
         strong_global_position = filtered_global_position::update_position_anchor_reference(now_ms, current_reference.has_reference, current_transformed_local_position.rotation_urad);
         const global_reference_selector::reference_activation mission_activation = mission_reference_seed::update(local_position, current_reference, now_ms);
         global_reference_selector::output_snapshot reference_decision = {};
@@ -197,7 +255,7 @@ namespace position_sensorfusion_pipeline
 
         position_sensorfusion::output_snapshot output = {};
 
-        output = convert_output(transformed_local_position);
+        output = hold_last_valid_output_if_needed(convert_output(transformed_local_position), now_ms);
 
         position_sensorfusion::set_output(output);
     }

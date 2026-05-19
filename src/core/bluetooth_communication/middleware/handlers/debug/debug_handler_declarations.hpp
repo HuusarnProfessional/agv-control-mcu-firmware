@@ -32,10 +32,13 @@ namespace debug_handlers
     bool handle_get_global_reference_selector_debug();
     bool handle_get_local_to_global_transform_debug();
     bool handle_get_anchor_event_debug();
+    bool handle_get_anchor_change_debug();
     bool handle_get_filtered_global_offset_fusion_debug();
     bool handle_set_position_sensorfusion_bypass();
     bool handle_set_position_sensorfusion_local_only();
     bool handle_set_position_sensorfusion_global_anchor_test();
+    bool handle_set_position_sensorfusion_heading_anchor();
+    bool handle_set_position_sensorfusion_position_anchor();
     bool handle_set_filtered_global_anchor_confidence_gain();
     bool handle_set_filtered_global_position_anchor_confidence_gain();
     bool handle_get_voltage_debug();

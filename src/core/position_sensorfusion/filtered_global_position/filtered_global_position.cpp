@@ -42,24 +42,24 @@ namespace
     constexpr std::int64_t chord_heading_zero_line_error_um = 450000;
     constexpr std::uint32_t chord_heading_max_window_age_ms = 2500U;
 
-    constexpr std::uint32_t huber_pca_heading_max_age_ms = 2500U;
-    constexpr std::uint32_t huber_pca_heading_estimated_delay_ms = 1300U;
-    constexpr std::uint32_t huber_pca_heading_reference_window_ms = 900U;
+    constexpr std::uint32_t huber_pca_heading_max_age_ms = 2000U;
+    constexpr std::uint32_t huber_pca_heading_estimated_delay_ms = 900U;
+    constexpr std::uint32_t huber_pca_heading_reference_window_ms = 700U;
     constexpr std::int64_t huber_pca_heading_min_distance_um = 300000;
     constexpr std::int64_t huber_pca_heading_full_distance_um = 900000;
     constexpr std::uint8_t huber_pca_heading_min_sample_count = 6U;
     constexpr std::uint8_t huber_pca_heading_full_sample_count = 12U;
-    constexpr std::uint8_t huber_pca_heading_max_sample_count = 25U;
+    constexpr std::uint8_t huber_pca_heading_max_sample_count = 15U;
     constexpr std::uint32_t huber_pca_delta_um = 20000U;
     constexpr std::uint32_t huber_pca_good_residual_um = 20000U;
     constexpr std::uint32_t huber_pca_zero_residual_um = 120000U;
     constexpr std::uint8_t huber_pca_iteration_count = 6U;
-    constexpr std::uint32_t position_anchor_max_age_ms = 2200U;
-    constexpr std::uint32_t position_anchor_estimated_delay_ms = 900U;
-    constexpr std::uint32_t position_anchor_reference_window_ms = 900U;
-    constexpr std::uint8_t position_anchor_min_sample_count = 5U;
-    constexpr std::uint8_t position_anchor_full_sample_count = 10U;
-    constexpr std::uint8_t position_anchor_max_sample_count = 25U;
+    constexpr std::uint32_t position_anchor_max_age_ms = 1200U;
+    constexpr std::uint32_t position_anchor_estimated_delay_ms = 500U;
+    constexpr std::uint32_t position_anchor_reference_window_ms = 500U;
+    constexpr std::uint8_t position_anchor_min_sample_count = 3U;
+    constexpr std::uint8_t position_anchor_full_sample_count = 7U;
+    constexpr std::uint8_t position_anchor_max_sample_count = 7U;
     constexpr std::uint32_t position_anchor_huber_delta_um = 80000U;
     constexpr std::uint32_t position_anchor_good_residual_um = 50000U;
     constexpr std::uint32_t position_anchor_zero_residual_um = 300000U;
@@ -113,6 +113,10 @@ namespace
         std::int64_t position_reference_x_um = 0;
         std::int64_t position_reference_y_um = 0;
         std::int64_t position_reference_z_um = 0;
+        bool position_reference_has_local_reference = false;
+        std::int64_t position_reference_local_x_um = 0;
+        std::int64_t position_reference_local_y_um = 0;
+        std::int32_t position_reference_local_heading_urad = 0;
         std::uint8_t position_anchor_sample_count = 0U;
         std::uint32_t position_anchor_median_residual_um = 0U;
         std::uint32_t position_anchor_window_age_ms = 0U;
@@ -915,7 +919,7 @@ namespace
 
     std::uint16_t calculate_samples_position_confidence(const accepted_sample *samples, std::uint8_t sample_count)
     {
-        std::int64_t confidence_values[huber_pca_heading_max_sample_count] = {};
+        static std::int64_t confidence_values[huber_pca_heading_max_sample_count] = {};
         std::uint8_t confidence_count = 0U;
 
         for (std::uint8_t index = 0U; index < sample_count; index++)
@@ -941,7 +945,7 @@ namespace
 
     std::uint16_t calculate_position_anchor_samples_confidence(const accepted_sample *samples, std::uint8_t sample_count)
     {
-        std::int64_t confidence_values[position_anchor_max_sample_count] = {};
+        static std::int64_t confidence_values[position_anchor_max_sample_count] = {};
         std::uint8_t confidence_count = 0U;
 
         for (std::uint8_t index = 0U; index < sample_count; index++)
@@ -1129,7 +1133,7 @@ namespace
         accepted_sample anchor_reference_sample = newest_sample;
         std::uint16_t anchor_position_confidence = 0U;
         std::uint32_t anchor_position_residual_um = 0U;
-        accepted_sample anchor_fit_samples[position_anchor_max_sample_count] = {};
+        static accepted_sample anchor_fit_samples[position_anchor_max_sample_count] = {};
         std::uint8_t anchor_fit_sample_count = 0U;
 
         for (std::uint8_t index = 0U; (index <= oldest_index) && (anchor_fit_sample_count < position_anchor_max_sample_count); index++)
@@ -1366,7 +1370,7 @@ namespace
 
     std::uint32_t calculate_median_residual_um(const std::uint32_t *residuals_um, std::uint8_t sample_count)
     {
-        std::int64_t values[huber_pca_heading_max_sample_count] = {};
+        static std::int64_t values[huber_pca_heading_max_sample_count] = {};
 
         for (std::uint8_t index = 0U; index < sample_count; index++)
         {
@@ -1393,7 +1397,7 @@ namespace
 
     void update_heading_from_history_huber_pca()
     {
-        accepted_sample samples[huber_pca_heading_max_sample_count] = {};
+        static accepted_sample samples[huber_pca_heading_max_sample_count] = {};
         const std::uint8_t collected_sample_count = collect_huber_pca_heading_samples(samples);
 
         if (collected_sample_count < huber_pca_heading_min_sample_count)
@@ -1403,7 +1407,7 @@ namespace
 
         const std::uint8_t reference_index = find_huber_pca_reference_index(samples, collected_sample_count);
         const accepted_sample reference_sample = samples[reference_index];
-        accepted_sample fit_samples[huber_pca_heading_max_sample_count] = {};
+        static accepted_sample fit_samples[huber_pca_heading_max_sample_count] = {};
         const std::uint8_t fit_sample_count = collect_huber_pca_reference_window_samples(samples, collected_sample_count, reference_index, fit_samples);
 
         if (fit_sample_count < huber_pca_heading_min_sample_count)
@@ -1422,8 +1426,8 @@ namespace
             return;
         }
 
-        std::uint16_t weights[huber_pca_heading_max_sample_count] = {};
-        std::uint32_t residuals_um[huber_pca_heading_max_sample_count] = {};
+        static std::uint16_t weights[huber_pca_heading_max_sample_count] = {};
+        static std::uint32_t residuals_um[huber_pca_heading_max_sample_count] = {};
         double direction_x = 1.0;
         double direction_y = 0.0;
 
@@ -1723,8 +1727,8 @@ namespace
 
     bool calculate_position_anchor_center(const accepted_sample *samples, std::uint8_t sample_count, accepted_sample &center_sample_out, std::uint32_t &median_residual_um_out)
     {
-        std::uint16_t weights[position_anchor_max_sample_count] = {};
-        std::uint32_t residuals_um[position_anchor_max_sample_count] = {};
+        static std::uint16_t weights[position_anchor_max_sample_count] = {};
+        static std::uint32_t residuals_um[position_anchor_max_sample_count] = {};
         double center_x = 0.0;
         double center_y = 0.0;
         double center_z = 0.0;
@@ -1797,7 +1801,7 @@ namespace
         }
 
         const std::int32_t reference_rotation_urad = normalize_angle_urad(measured_heading_urad - reference_sample.local_heading_urad);
-        accepted_sample usable_samples[position_anchor_max_sample_count] = {};
+        static accepted_sample usable_samples[position_anchor_max_sample_count] = {};
         std::uint8_t usable_sample_count = 0U;
 
         for (std::uint8_t index = 0U; index < sample_count; index++)
@@ -1831,7 +1835,7 @@ namespace
             return false;
         }
 
-        accepted_sample compensated_samples[position_anchor_max_sample_count] = {};
+        static accepted_sample compensated_samples[position_anchor_max_sample_count] = {};
         build_motion_compensated_position_anchor_samples(usable_samples, usable_sample_count, reference_sample, reference_rotation_urad, compensated_samples);
 
         accepted_sample center_sample = reference_sample;
@@ -1857,7 +1861,7 @@ namespace
 
     void update_position_anchor_from_history(std::int32_t reference_rotation_urad)
     {
-        accepted_sample samples[position_anchor_max_sample_count] = {};
+        static accepted_sample samples[position_anchor_max_sample_count] = {};
         const std::uint8_t collected_sample_count = collect_position_anchor_samples(samples);
 
         if (collected_sample_count < position_anchor_min_sample_count)
@@ -1875,7 +1879,7 @@ namespace
         }
 
         const accepted_sample reference_sample = samples[reference_index];
-        accepted_sample fit_samples[position_anchor_max_sample_count] = {};
+        static accepted_sample fit_samples[position_anchor_max_sample_count] = {};
         const std::uint8_t fit_sample_count = collect_position_anchor_window_samples(samples, collected_sample_count, reference_sample, fit_samples);
 
         if (fit_sample_count < position_anchor_min_sample_count)
@@ -1887,7 +1891,7 @@ namespace
             return;
         }
 
-        accepted_sample compensated_samples[position_anchor_max_sample_count] = {};
+        static accepted_sample compensated_samples[position_anchor_max_sample_count] = {};
         build_motion_compensated_position_anchor_samples(fit_samples, fit_sample_count, reference_sample, reference_rotation_urad, compensated_samples);
 
         accepted_sample center_sample = reference_sample;
@@ -1917,6 +1921,10 @@ namespace
         stable.position_reference_x_um = center_sample.x_um;
         stable.position_reference_y_um = center_sample.y_um;
         stable.position_reference_z_um = center_sample.z_um;
+        stable.position_reference_has_local_reference = reference_sample.has_local_reference;
+        stable.position_reference_local_x_um = reference_sample.local_x_um;
+        stable.position_reference_local_y_um = reference_sample.local_y_um;
+        stable.position_reference_local_heading_urad = reference_sample.local_heading_urad;
         stable.candidate_position_anchor_confidence = anchor_confidence;
         stable.position_anchor_sample_count = fit_sample_count;
         stable.position_anchor_median_residual_um = median_residual_um;
@@ -1936,6 +1944,10 @@ namespace
         stable.position_reference_x_um = sample.x_um;
         stable.position_reference_y_um = sample.y_um;
         stable.position_reference_z_um = sample.z_um;
+        stable.position_reference_has_local_reference = sample.has_local_reference;
+        stable.position_reference_local_x_um = sample.local_x_um;
+        stable.position_reference_local_y_um = sample.local_y_um;
+        stable.position_reference_local_heading_urad = sample.local_heading_urad;
 
         if (sample.has_local_reference == true)
         {
@@ -1972,6 +1984,10 @@ namespace
         stable.position_reference_x_um = stable.x_um;
         stable.position_reference_y_um = stable.y_um;
         stable.position_reference_z_um = stable.z_um;
+        stable.position_reference_has_local_reference = sample.has_local_reference;
+        stable.position_reference_local_x_um = sample.local_x_um;
+        stable.position_reference_local_y_um = sample.local_y_um;
+        stable.position_reference_local_heading_urad = sample.local_heading_urad;
 
         if (sample.has_local_reference == true)
         {
@@ -2021,6 +2037,10 @@ namespace
             output.position_reference_x_um = stable.position_reference_x_um;
             output.position_reference_y_um = stable.position_reference_y_um;
             output.position_reference_z_um = stable.position_reference_z_um;
+            output.position_reference_has_local_reference = stable.position_reference_has_local_reference;
+            output.position_reference_local_x_um = stable.position_reference_local_x_um;
+            output.position_reference_local_y_um = stable.position_reference_local_y_um;
+            output.position_reference_local_heading_urad = stable.position_reference_local_heading_urad;
             output.position_anchor_sample_count = stable.position_anchor_sample_count;
             output.position_anchor_median_residual_um = stable.position_anchor_median_residual_um;
             output.position_anchor_window_age_ms = stable.position_anchor_window_age_ms;
