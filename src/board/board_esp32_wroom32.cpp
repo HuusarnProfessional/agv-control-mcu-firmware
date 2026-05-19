@@ -3,7 +3,6 @@
 #include <Arduino.h>
 
 #include "../core/bluetooth_communication/bluetooth_transport.hpp"
-#include "../core/control/primitives/button/button_pipeline.hpp"
 #include "../core/control/robot_control.hpp"
 #include "../platform/esp_uart_api.hpp"
 
@@ -39,7 +38,6 @@ void init()
     bluetooth_transport::init(bluetooth_device_name);
     esp_uart_api::init();
     robot_control::init();
-    button_pipeline::init(button_1_pin, LOW);
 
     g_initialized = true;
 }
@@ -52,7 +50,6 @@ void tick(std::uint32_t now_ms)
     }
 
     robot_control::tick(now_ms);
-    button_pipeline::tick(now_ms);
 }
 
 }

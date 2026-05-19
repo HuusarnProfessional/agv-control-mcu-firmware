@@ -37,20 +37,6 @@ namespace filtered_global_position
         std::uint32_t heading_reference_time_ms = 0U;
         std::uint32_t heading_reference_sample_id = 0U;
         std::uint32_t heading_estimated_delay_ms = 0U;
-        std::uint32_t position_reference_time_ms = 0U;
-        std::uint32_t position_reference_sample_id = 0U;
-        std::uint16_t position_reference_pose_id = 0U;
-        std::uint8_t position_reference_branch_id = 0U;
-        std::int64_t position_reference_x_um = 0;
-        std::int64_t position_reference_y_um = 0;
-        std::int64_t position_reference_z_um = 0;
-        bool position_reference_has_local_reference = false;
-        std::int64_t position_reference_local_x_um = 0;
-        std::int64_t position_reference_local_y_um = 0;
-        std::int32_t position_reference_local_heading_urad = 0;
-        std::uint8_t position_anchor_sample_count = 0U;
-        std::uint32_t position_anchor_median_residual_um = 0U;
-        std::uint32_t position_anchor_window_age_ms = 0U;
         std::uint16_t heading_reference_pose_id = 0U;
         std::uint8_t heading_reference_branch_id = 0U;
         std::int64_t heading_reference_x_um = 0;
@@ -61,7 +47,6 @@ namespace filtered_global_position
         std::uint16_t candidate_anchor_heading_confidence = 0U;
         std::uint16_t candidate_anchor_adjusted_heading_confidence = 0U;
         std::uint16_t candidate_anchor_confidence = 0U;
-        std::uint16_t candidate_position_anchor_confidence = 0U;
         std::uint8_t huber_pca_used_sample_count = 0U;
         std::uint32_t huber_pca_median_residual_um = 0U;
         std::uint32_t huber_pca_max_residual_um = 0U;
@@ -83,17 +68,7 @@ namespace filtered_global_position
 
     std::uint16_t get_candidate_anchor_heading_confidence_gain_permille();
 
-    bool set_candidate_position_anchor_confidence_gain_permille(std::uint16_t gain_permille);
-
-    std::uint16_t get_candidate_position_anchor_confidence_gain_permille();
-
-    void set_position_anchor_trajectory_gate_enabled(bool enabled);
-
-    bool is_position_anchor_trajectory_gate_enabled();
-
     output_snapshot update(std::uint32_t now_ms, const motion_mcu_incoming_state::local_position_state &local_position);
-
-    output_snapshot update_position_anchor_reference(std::uint32_t now_ms, bool has_reference_rotation, std::int32_t reference_rotation_urad);
 
     output_snapshot read_output(std::uint32_t now_ms);
 }

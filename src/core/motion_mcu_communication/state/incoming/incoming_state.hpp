@@ -14,7 +14,6 @@ namespace motion_mcu_incoming_state
         std::uint16_t confidence_heading = 0U;
         std::uint16_t pose_id = 0U;
         std::uint8_t branch_id = 0U;
-        std::uint32_t received_time_ms = 0U;
     };
 
     struct safety_status_state

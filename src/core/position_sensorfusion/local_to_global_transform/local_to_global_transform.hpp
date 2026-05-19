@@ -17,7 +17,6 @@ namespace local_to_global_transform
         std::int64_t x_um = 0;
         std::int64_t y_um = 0;
         std::int32_t heading_urad = 0;
-        std::int32_t rotation_urad = 0;
 
         std::uint16_t confidence_position = 0U;
         std::uint16_t confidence_heading = 0U;
@@ -36,7 +35,6 @@ namespace local_to_global_transform
     {
         bool valid = false;
         std::uint32_t event_id = 0U;
-        global_reference_selector::anchor_type type = global_reference_selector::anchor_type::none;
         bool is_initial_reference = false;
         bool is_mission_seed = false;
         std::uint16_t source_pose_id = 0U;
@@ -53,10 +51,6 @@ namespace local_to_global_transform
         std::int32_t rotation_urad = 0;
         std::int32_t matrix_cos_ppm = 0;
         std::int32_t matrix_sin_ppm = 0;
-        bool has_position_jump = false;
-        std::int64_t position_jump_x_um = 0;
-        std::int64_t position_jump_y_um = 0;
-        std::int32_t heading_jump_urad = 0;
     };
 
     void init();
