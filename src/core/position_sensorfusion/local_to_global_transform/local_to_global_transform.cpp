@@ -37,6 +37,7 @@ namespace
 
     transform_state active_transform = {};
     local_to_global_transform::output_snapshot latest_output = {};
+    local_to_global_transform::output_snapshot latest_valid_output = {};
     local_to_global_transform::anchor_event_snapshot latest_anchor_event = {};
     std::uint32_t next_anchor_event_id = 1U;
 
@@ -91,7 +92,7 @@ namespace
         const int length = std::snprintf(
             response,
             sizeof(response),
-            "rsp:anchor_event(%lu,%lu,%lu,%u,%u,%u,%lu,%ld,%ld,%ld,%ld)",
+            "rsp:anchor_event(%lu,%lu,%lu,%u,%u,%u,%lu,%ld,%ld,%ld,%ld,%u)",
             static_cast<unsigned long>(event.event_id),
             static_cast<unsigned long>(bool_to_u32(event.is_initial_reference)),
             static_cast<unsigned long>(bool_to_u32(event.is_mission_seed)),
@@ -102,7 +103,8 @@ namespace
             static_cast<long>(event.global_reference_x_um / 1000LL),
             static_cast<long>(event.global_reference_y_um / 1000LL),
             static_cast<long>(event.global_reference_heading_urad),
-            static_cast<long>(event.rotation_urad));
+            static_cast<long>(event.rotation_urad),
+            static_cast<unsigned>(event.type));
 
         if ((length <= 0) || (static_cast<std::size_t>(length) >= sizeof(response)))
         {
@@ -112,14 +114,50 @@ namespace
         (void)handler_helpers::write_response_text(response);
     }
 
-    void store_anchor_event(const global_reference_selector::reference_activation &activation)
+    bool calculate_projected_pose(const motion_mcu_incoming_state::local_position_state &local_position, std::int64_t &x_um_out, std::int64_t &y_um_out, std::int32_t &heading_urad_out)
+    {
+        if (active_transform.valid == false)
+        {
+            return false;
+        }
+
+        if (local_position.has_pose == false)
+        {
+            return false;
+        }
+
+        if (local_position.branch_id != active_transform.branch_id)
+        {
+            return false;
+        }
+
+        const std::int64_t local_delta_x_um = local_position.x_um - active_transform.local_reference_x_um;
+        const std::int64_t local_delta_y_um = local_position.y_um - active_transform.local_reference_y_um;
+        std::int64_t global_delta_x_um = 0;
+        std::int64_t global_delta_y_um = 0;
+
+        rotate_local_delta(local_delta_x_um, local_delta_y_um, active_transform.rotation_urad, global_delta_x_um, global_delta_y_um);
+
+        x_um_out = active_transform.global_reference_x_um + global_delta_x_um;
+        y_um_out = active_transform.global_reference_y_um + global_delta_y_um;
+        heading_urad_out = normalize_angle_urad(local_position.heading_urad + active_transform.rotation_urad);
+
+        return true;
+    }
+
+    void store_anchor_event(const global_reference_selector::reference_activation &activation, const motion_mcu_incoming_state::local_position_state &local_position, const local_to_global_transform::output_snapshot &previous_output)
     {
         const double rotation_rad = static_cast<double>(active_transform.rotation_urad) / 1000000.0;
         const double cos_rotation = std::cos(rotation_rad);
         const double sin_rotation = std::sin(rotation_rad);
+        std::int64_t current_x_um = 0;
+        std::int64_t current_y_um = 0;
+        std::int32_t current_heading_urad = 0;
+        const bool has_current_pose = calculate_projected_pose(local_position, current_x_um, current_y_um, current_heading_urad);
 
         latest_anchor_event.valid = true;
         latest_anchor_event.event_id = next_anchor_event_id;
+        latest_anchor_event.type = activation.type;
         latest_anchor_event.is_initial_reference = activation.is_initial_reference;
         latest_anchor_event.is_mission_seed = activation.is_mission_seed;
         latest_anchor_event.source_pose_id = activation.source_pose_id;
@@ -136,6 +174,14 @@ namespace
         latest_anchor_event.rotation_urad = active_transform.rotation_urad;
         latest_anchor_event.matrix_cos_ppm = calculate_matrix_value_ppm(cos_rotation);
         latest_anchor_event.matrix_sin_ppm = calculate_matrix_value_ppm(sin_rotation);
+
+        if ((previous_output.has_pose == true) && (has_current_pose == true))
+        {
+            latest_anchor_event.has_position_jump = true;
+            latest_anchor_event.position_jump_x_um = current_x_um - previous_output.x_um;
+            latest_anchor_event.position_jump_y_um = current_y_um - previous_output.y_um;
+            latest_anchor_event.heading_jump_urad = normalize_angle_urad(current_heading_urad - previous_output.heading_urad);
+        }
 
         send_anchor_event_response(latest_anchor_event);
 
@@ -159,10 +205,26 @@ namespace
             return false;
         }
 
-        if (activation.global_reference.has_heading == false)
+        if (activation.type == global_reference_selector::anchor_type::none)
         {
             return false;
         }
+
+        if ((activation.global_reference.has_heading == false) && (activation.type != global_reference_selector::anchor_type::position_only))
+        {
+            return false;
+        }
+
+        const bool position_only_anchor = activation.type == global_reference_selector::anchor_type::position_only;
+        const std::int32_t previous_rotation_urad = active_transform.rotation_urad;
+        const std::uint16_t previous_heading_confidence = active_transform.confidence_heading;
+
+        if ((position_only_anchor == true) && (active_transform.valid == false))
+        {
+            return false;
+        }
+
+        const local_to_global_transform::output_snapshot previous_output = latest_valid_output;
 
         active_transform.valid = true;
 
@@ -181,16 +243,26 @@ namespace
 
         active_transform.global_reference_x_um = activation.global_reference.x_um;
         active_transform.global_reference_y_um = activation.global_reference.y_um;
-        active_transform.global_reference_heading_urad = activation.global_reference.heading_urad;
-        active_transform.rotation_urad = normalize_angle_urad(activation.global_reference.heading_urad - active_transform.local_reference_heading_urad);
+
+        if (position_only_anchor == true)
+        {
+            active_transform.rotation_urad = previous_rotation_urad;
+            active_transform.global_reference_heading_urad = normalize_angle_urad(active_transform.local_reference_heading_urad + active_transform.rotation_urad);
+        }
+        else
+        {
+            active_transform.global_reference_heading_urad = activation.global_reference.heading_urad;
+            active_transform.rotation_urad = normalize_angle_urad(activation.global_reference.heading_urad - active_transform.local_reference_heading_urad);
+        }
+
         active_transform.confidence_position = activation.global_reference.confidence_position;
-        active_transform.confidence_heading = activation.global_reference.confidence_heading;
+        active_transform.confidence_heading = position_only_anchor == true ? previous_heading_confidence : activation.global_reference.confidence_heading;
         active_transform.branch_id = local_position.branch_id;
         active_transform.reference_sample_id = activation.global_reference.sample_id;
         active_transform.is_mission_seed = activation.is_mission_seed;
         active_transform.activation_time_ms = activation.activation_time_ms;
 
-        store_anchor_event(activation);
+        store_anchor_event(activation, local_position, previous_output);
 
         return true;
     }
@@ -212,6 +284,7 @@ namespace
         }
 
         output.has_transform = true;
+        output.rotation_urad = active_transform.rotation_urad;
         output.branch_matches = local_position.branch_id == active_transform.branch_id;
 
         if (output.branch_matches == false)
@@ -255,6 +328,7 @@ namespace local_to_global_transform
     {
         active_transform = {};
         latest_output = {};
+        latest_valid_output = {};
         latest_anchor_event = {};
         next_anchor_event_id = 1U;
     }
@@ -270,12 +344,22 @@ namespace local_to_global_transform
 
         latest_output = project_local_position(local_position, transform_activated, now_ms);
 
+        if (latest_output.has_pose == true)
+        {
+            latest_valid_output = latest_output;
+        }
+
         return latest_output;
     }
 
     output_snapshot read_output(const motion_mcu_incoming_state::local_position_state &local_position, std::uint32_t now_ms)
     {
         latest_output = project_local_position(local_position, false, now_ms);
+
+        if (latest_output.has_pose == true)
+        {
+            latest_valid_output = latest_output;
+        }
 
         return latest_output;
     }
