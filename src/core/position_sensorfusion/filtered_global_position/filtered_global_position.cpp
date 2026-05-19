@@ -64,6 +64,16 @@ namespace
     constexpr std::uint32_t position_anchor_good_residual_um = 50000U;
     constexpr std::uint32_t position_anchor_zero_residual_um = 300000U;
     constexpr std::uint8_t position_anchor_iteration_count = 5U;
+    constexpr std::uint8_t position_anchor_trajectory_min_sample_count = 5U;
+    constexpr std::uint8_t position_anchor_trajectory_full_sample_count = 7U;
+    constexpr std::int64_t position_anchor_trajectory_min_movement_um = 80000;
+    constexpr std::int64_t position_anchor_trajectory_full_movement_um = 180000;
+    constexpr std::int64_t position_anchor_trajectory_good_direction_error_urad = 87266;
+    constexpr std::int64_t position_anchor_trajectory_zero_direction_error_urad = 261799;
+    constexpr std::int64_t position_anchor_trajectory_good_ratio_error_permille = 150;
+    constexpr std::int64_t position_anchor_trajectory_zero_ratio_error_permille = 450;
+    constexpr std::uint32_t position_anchor_trajectory_good_residual_um = 60000U;
+    constexpr std::uint32_t position_anchor_trajectory_zero_residual_um = 180000U;
     constexpr std::uint16_t default_candidate_anchor_heading_confidence_gain_permille = 2500U;
     constexpr std::uint16_t default_candidate_position_anchor_confidence_gain_permille = 1200U;
     constexpr std::uint16_t maximum_candidate_anchor_confidence_gain_permille = 10000U;
@@ -186,6 +196,7 @@ namespace
     std::uint32_t last_sample_id = 0U;
     std::uint16_t candidate_anchor_heading_confidence_gain_permille = default_candidate_anchor_heading_confidence_gain_permille;
     std::uint16_t candidate_position_anchor_confidence_gain_permille = default_candidate_position_anchor_confidence_gain_permille;
+    bool position_anchor_trajectory_gate_enabled = true;
 
     bool calculate_motion_compensated_anchor_reference(const accepted_sample *samples, std::uint8_t sample_count, const accepted_sample &reference_sample, std::int32_t measured_heading_urad, accepted_sample &center_sample_out, std::uint16_t &reference_position_confidence_out, std::uint32_t &median_residual_um_out);
 
@@ -967,6 +978,95 @@ namespace
         const std::int64_t median_confidence = median_value(confidence_values, confidence_count);
 
         return static_cast<std::uint16_t>(median_confidence);
+    }
+
+    std::int32_t calculate_angle_delta_between_vectors_urad(std::int64_t left_x_um, std::int64_t left_y_um, std::int64_t right_x_um, std::int64_t right_y_um)
+    {
+        const double left_angle_rad = std::atan2(static_cast<double>(left_y_um), static_cast<double>(left_x_um));
+        const double right_angle_rad = std::atan2(static_cast<double>(right_y_um), static_cast<double>(right_x_um));
+        const std::int32_t left_angle_urad = normalize_angle_urad(static_cast<std::int32_t>(std::llround(left_angle_rad * 1000000.0)));
+        const std::int32_t right_angle_urad = normalize_angle_urad(static_cast<std::int32_t>(std::llround(right_angle_rad * 1000000.0)));
+        std::int32_t delta_urad = normalize_angle_urad(left_angle_urad - right_angle_urad);
+
+        if (delta_urad < 0)
+        {
+            delta_urad = -delta_urad;
+        }
+
+        return delta_urad;
+    }
+
+    std::uint16_t calculate_position_anchor_trajectory_confidence(const accepted_sample *samples, std::uint8_t sample_count, std::int32_t reference_rotation_urad, std::uint32_t median_residual_um)
+    {
+        if (position_anchor_trajectory_gate_enabled == false)
+        {
+            return full_confidence;
+        }
+
+        if (sample_count < position_anchor_trajectory_min_sample_count)
+        {
+            return 0U;
+        }
+
+        const accepted_sample newest_sample = samples[0U];
+        const accepted_sample oldest_sample = samples[sample_count - 1U];
+
+        if ((newest_sample.has_local_reference == false) || (oldest_sample.has_local_reference == false))
+        {
+            return 0U;
+        }
+
+        if (newest_sample.branch_id != oldest_sample.branch_id)
+        {
+            return 0U;
+        }
+
+        const std::int64_t local_delta_x_um = newest_sample.local_x_um - oldest_sample.local_x_um;
+        const std::int64_t local_delta_y_um = newest_sample.local_y_um - oldest_sample.local_y_um;
+        std::int64_t projected_local_delta_x_um = 0;
+        std::int64_t projected_local_delta_y_um = 0;
+
+        rotate_local_delta(local_delta_x_um, local_delta_y_um, reference_rotation_urad, projected_local_delta_x_um, projected_local_delta_y_um);
+
+        const std::int64_t global_delta_x_um = newest_sample.x_um - oldest_sample.x_um;
+        const std::int64_t global_delta_y_um = newest_sample.y_um - oldest_sample.y_um;
+        const std::int64_t local_movement_um = calculate_distance_um(projected_local_delta_x_um, projected_local_delta_y_um);
+        const std::int64_t global_movement_um = calculate_distance_um(global_delta_x_um, global_delta_y_um);
+
+        if (local_movement_um < position_anchor_trajectory_min_movement_um)
+        {
+            return 0U;
+        }
+
+        if (global_movement_um < position_anchor_trajectory_min_movement_um)
+        {
+            return 0U;
+        }
+
+        const std::int32_t direction_error_urad = calculate_angle_delta_between_vectors_urad(projected_local_delta_x_um, projected_local_delta_y_um, global_delta_x_um, global_delta_y_um);
+        const std::int64_t ratio_permille = (global_movement_um * 1000LL) / local_movement_um;
+        std::int64_t ratio_error_permille = ratio_permille - 1000LL;
+
+        if (ratio_error_permille < 0)
+        {
+            ratio_error_permille = -ratio_error_permille;
+        }
+
+        const std::uint16_t sample_count_confidence = sample_count_to_confidence(sample_count, position_anchor_trajectory_min_sample_count, position_anchor_trajectory_full_sample_count);
+        const std::uint16_t local_movement_confidence = growth_to_confidence(local_movement_um, position_anchor_trajectory_min_movement_um, position_anchor_trajectory_full_movement_um);
+        const std::uint16_t global_movement_confidence = growth_to_confidence(global_movement_um, position_anchor_trajectory_min_movement_um, position_anchor_trajectory_full_movement_um);
+        const std::uint16_t direction_confidence = range_to_confidence(direction_error_urad, position_anchor_trajectory_good_direction_error_urad, position_anchor_trajectory_zero_direction_error_urad);
+        const std::uint16_t ratio_confidence = range_to_confidence(ratio_error_permille, position_anchor_trajectory_good_ratio_error_permille, position_anchor_trajectory_zero_ratio_error_permille);
+        const std::uint16_t residual_confidence = range_to_confidence(median_residual_um, position_anchor_trajectory_good_residual_um, position_anchor_trajectory_zero_residual_um);
+        std::uint16_t trajectory_confidence = sample_count_confidence;
+
+        trajectory_confidence = smaller_confidence(trajectory_confidence, local_movement_confidence);
+        trajectory_confidence = smaller_confidence(trajectory_confidence, global_movement_confidence);
+        trajectory_confidence = smaller_confidence(trajectory_confidence, direction_confidence);
+        trajectory_confidence = smaller_confidence(trajectory_confidence, ratio_confidence);
+        trajectory_confidence = smaller_confidence(trajectory_confidence, residual_confidence);
+
+        return trajectory_confidence;
     }
 
     std::int64_t calculate_max_line_error_um(std::uint8_t last_index)
@@ -1909,10 +2009,12 @@ namespace
         const std::uint16_t sample_count_confidence = sample_count_to_confidence(fit_sample_count, position_anchor_min_sample_count, position_anchor_full_sample_count);
         const std::uint16_t position_confidence = calculate_position_anchor_samples_confidence(compensated_samples, fit_sample_count);
         const std::uint16_t residual_confidence = range_to_confidence(median_residual_um, position_anchor_good_residual_um, position_anchor_zero_residual_um);
+        const std::uint16_t trajectory_confidence = calculate_position_anchor_trajectory_confidence(fit_samples, fit_sample_count, reference_rotation_urad, median_residual_um);
         std::uint16_t anchor_confidence = sample_count_confidence;
 
         anchor_confidence = smaller_confidence(anchor_confidence, position_confidence);
         anchor_confidence = smaller_confidence(anchor_confidence, residual_confidence);
+        anchor_confidence = smaller_confidence(anchor_confidence, trajectory_confidence);
 
         stable.position_reference_time_ms = reference_sample.received_time_ms;
         stable.position_reference_sample_id = reference_sample.sample_id;
@@ -2179,6 +2281,7 @@ namespace filtered_global_position
         last_sample_id = 0U;
         candidate_anchor_heading_confidence_gain_permille = default_candidate_anchor_heading_confidence_gain_permille;
         candidate_position_anchor_confidence_gain_permille = default_candidate_position_anchor_confidence_gain_permille;
+        position_anchor_trajectory_gate_enabled = true;
     }
 
     bool set_candidate_anchor_heading_confidence_gain_permille(std::uint16_t gain_permille)
@@ -2211,6 +2314,16 @@ namespace filtered_global_position
     std::uint16_t get_candidate_position_anchor_confidence_gain_permille()
     {
         return candidate_position_anchor_confidence_gain_permille;
+    }
+
+    void set_position_anchor_trajectory_gate_enabled(bool enabled)
+    {
+        position_anchor_trajectory_gate_enabled = enabled;
+    }
+
+    bool is_position_anchor_trajectory_gate_enabled()
+    {
+        return position_anchor_trajectory_gate_enabled;
     }
 
     output_snapshot update(std::uint32_t now_ms, const motion_mcu_incoming_state::local_position_state &local_position)

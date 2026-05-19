@@ -87,6 +87,10 @@ namespace filtered_global_position
 
     std::uint16_t get_candidate_position_anchor_confidence_gain_permille();
 
+    void set_position_anchor_trajectory_gate_enabled(bool enabled);
+
+    bool is_position_anchor_trajectory_gate_enabled();
+
     output_snapshot update(std::uint32_t now_ms, const motion_mcu_incoming_state::local_position_state &local_position);
 
     output_snapshot update_position_anchor_reference(std::uint32_t now_ms, bool has_reference_rotation, std::int32_t reference_rotation_urad);
