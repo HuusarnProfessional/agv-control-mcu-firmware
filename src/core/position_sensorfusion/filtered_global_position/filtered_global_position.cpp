@@ -82,6 +82,8 @@ namespace
     constexpr std::uint32_t position_confidence_zero_age_ms = 2500U;
     constexpr std::uint32_t heading_confidence_full_age_ms = 500U;
     constexpr std::uint32_t heading_confidence_zero_age_ms = 5000U;
+    constexpr std::uint8_t local_history_size = 128U;
+    constexpr std::uint32_t local_history_max_match_error_ms = 150U;
 
     struct accepted_sample
     {
@@ -99,6 +101,12 @@ namespace
         std::int32_t local_heading_urad = 0;
         std::uint16_t pose_id = 0U;
         std::uint8_t branch_id = 0U;
+    };
+
+    struct local_history_entry
+    {
+        bool valid = false;
+        motion_mcu_incoming_state::local_position_state pose = {};
     };
 
     struct stable_state
@@ -197,6 +205,9 @@ namespace
     std::uint16_t candidate_anchor_heading_confidence_gain_permille = default_candidate_anchor_heading_confidence_gain_permille;
     std::uint16_t candidate_position_anchor_confidence_gain_permille = default_candidate_position_anchor_confidence_gain_permille;
     bool position_anchor_trajectory_gate_enabled = true;
+    local_history_entry local_history[local_history_size] = {};
+    std::uint8_t local_history_count = 0U;
+    std::uint32_t last_local_history_time_ms = 0U;
 
     bool calculate_motion_compensated_anchor_reference(const accepted_sample *samples, std::uint8_t sample_count, const accepted_sample &reference_sample, std::int32_t measured_heading_urad, accepted_sample &center_sample_out, std::uint16_t &reference_position_confidence_out, std::uint32_t &median_residual_um_out);
 
@@ -405,6 +416,80 @@ namespace
         return static_cast<std::int64_t>(distance);
     }
 
+    void push_local_history(const motion_mcu_incoming_state::local_position_state &local_position)
+    {
+        if (local_position.has_pose == false)
+        {
+            return;
+        }
+
+        if (local_position.received_time_ms == 0U)
+        {
+            return;
+        }
+
+        if (local_position.received_time_ms == last_local_history_time_ms)
+        {
+            return;
+        }
+
+        const std::uint8_t last_index = local_history_size - 1U;
+
+        for (std::uint8_t index = last_index; index > 0U; index--)
+        {
+            local_history[index] = local_history[index - 1U];
+        }
+
+        local_history[0U].valid = true;
+        local_history[0U].pose = local_position;
+        last_local_history_time_ms = local_position.received_time_ms;
+
+        if (local_history_count < local_history_size)
+        {
+            local_history_count++;
+        }
+    }
+
+    bool find_local_history_pose(std::uint32_t target_time_ms, motion_mcu_incoming_state::local_position_state &local_position_out)
+    {
+        if (target_time_ms == 0U)
+        {
+            return false;
+        }
+
+        std::uint32_t best_error_ms = UINT32_MAX;
+        bool has_pose = false;
+
+        for (std::uint8_t index = 0U; index < local_history_count; index++)
+        {
+            if (local_history[index].valid == false)
+            {
+                continue;
+            }
+
+            const std::uint32_t error_ms = absolute_time_difference_ms(local_history[index].pose.received_time_ms, target_time_ms);
+
+            if (error_ms < best_error_ms)
+            {
+                best_error_ms = error_ms;
+                local_position_out = local_history[index].pose;
+                has_pose = true;
+            }
+        }
+
+        if (has_pose == false)
+        {
+            return false;
+        }
+
+        if (best_error_ms > local_history_max_match_error_ms)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
     void rotate_local_delta(std::int64_t local_delta_x_um, std::int64_t local_delta_y_um, std::int32_t rotation_urad, std::int64_t &global_delta_x_um, std::int64_t &global_delta_y_um)
     {
         const double rotation_rad = static_cast<double>(rotation_urad) / 1000000.0;
@@ -492,6 +577,22 @@ namespace
     accepted_sample convert_sample(const global_position_api::global_position_sample &sample, const motion_mcu_incoming_state::local_position_state &local_position)
     {
         accepted_sample converted = {};
+        motion_mcu_incoming_state::local_position_state matched_local_position = {};
+        bool has_matched_local_position = find_local_history_pose(sample.received_time_ms, matched_local_position);
+
+        if (has_matched_local_position == false)
+        {
+            if (local_position.received_time_ms != 0U)
+            {
+                const std::uint32_t time_error_ms = absolute_time_difference_ms(local_position.received_time_ms, sample.received_time_ms);
+
+                if (time_error_ms <= local_history_max_match_error_ms)
+                {
+                    matched_local_position = local_position;
+                    has_matched_local_position = true;
+                }
+            }
+        }
 
         converted.valid = true;
         converted.sample_id = sample.sample_id;
@@ -502,14 +603,14 @@ namespace
         converted.z_um = static_cast<std::int64_t>(sample.z_mm) * 1000;
         converted.confidence_position = quality_factor_to_confidence(sample.quality_factor);
 
-        if ((local_position.has_pose == true) && (local_position.branch_id <= 1U) && (local_position.pose_id != 0U))
+        if ((has_matched_local_position == true) && (matched_local_position.has_pose == true) && (matched_local_position.branch_id <= 1U) && (matched_local_position.pose_id != 0U))
         {
             converted.has_local_reference = true;
-            converted.local_x_um = local_position.x_um;
-            converted.local_y_um = local_position.y_um;
-            converted.local_heading_urad = local_position.heading_urad;
-            converted.pose_id = local_position.pose_id;
-            converted.branch_id = local_position.branch_id;
+            converted.local_x_um = matched_local_position.x_um;
+            converted.local_y_um = matched_local_position.y_um;
+            converted.local_heading_urad = matched_local_position.heading_urad;
+            converted.pose_id = matched_local_position.pose_id;
+            converted.branch_id = matched_local_position.branch_id;
         }
 
         return converted;
@@ -996,6 +1097,127 @@ namespace
         return delta_urad;
     }
 
+    void get_projected_local_xy(const accepted_sample &sample, std::int32_t reference_rotation_urad, double &x_um_out, double &y_um_out)
+    {
+        std::int64_t rotated_x_um = 0;
+        std::int64_t rotated_y_um = 0;
+
+        rotate_local_delta(sample.local_x_um, sample.local_y_um, reference_rotation_urad, rotated_x_um, rotated_y_um);
+
+        x_um_out = static_cast<double>(rotated_x_um);
+        y_um_out = static_cast<double>(rotated_y_um);
+    }
+
+    bool calculate_trajectory_tangent(const accepted_sample *samples, std::uint8_t sample_count, bool use_local_position, std::int32_t reference_rotation_urad, double &direction_x_out, double &direction_y_out, std::int64_t &movement_um_out)
+    {
+        double weight_sum = 0.0;
+        double center_x = 0.0;
+        double center_y = 0.0;
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            double x_um = static_cast<double>(samples[index].x_um);
+            double y_um = static_cast<double>(samples[index].y_um);
+
+            if (use_local_position == true)
+            {
+                if (samples[index].has_local_reference == false)
+                {
+                    return false;
+                }
+
+                get_projected_local_xy(samples[index], reference_rotation_urad, x_um, y_um);
+            }
+
+            double weight = static_cast<double>(samples[index].confidence_position);
+
+            if (weight <= 0.0)
+            {
+                weight = 1.0;
+            }
+
+            center_x += weight * x_um;
+            center_y += weight * y_um;
+            weight_sum += weight;
+        }
+
+        if (weight_sum <= 0.0)
+        {
+            return false;
+        }
+
+        center_x /= weight_sum;
+        center_y /= weight_sum;
+
+        double xx = 0.0;
+        double xy = 0.0;
+        double yy = 0.0;
+
+        for (std::uint8_t index = 0U; index < sample_count; index++)
+        {
+            double x_um = static_cast<double>(samples[index].x_um);
+            double y_um = static_cast<double>(samples[index].y_um);
+
+            if (use_local_position == true)
+            {
+                get_projected_local_xy(samples[index], reference_rotation_urad, x_um, y_um);
+            }
+
+            double weight = static_cast<double>(samples[index].confidence_position);
+
+            if (weight <= 0.0)
+            {
+                weight = 1.0;
+            }
+
+            const double dx = x_um - center_x;
+            const double dy = y_um - center_y;
+
+            xx += weight * dx * dx;
+            xy += weight * dx * dy;
+            yy += weight * dy * dy;
+        }
+
+        xx /= weight_sum;
+        xy /= weight_sum;
+        yy /= weight_sum;
+
+        if ((xx + yy) <= 1.0)
+        {
+            return false;
+        }
+
+        const double angle_rad = 0.5 * std::atan2(2.0 * xy, xx - yy);
+        double direction_x = std::cos(angle_rad);
+        double direction_y = std::sin(angle_rad);
+        double newest_x = static_cast<double>(samples[0U].x_um);
+        double newest_y = static_cast<double>(samples[0U].y_um);
+        double oldest_x = static_cast<double>(samples[sample_count - 1U].x_um);
+        double oldest_y = static_cast<double>(samples[sample_count - 1U].y_um);
+
+        if (use_local_position == true)
+        {
+            get_projected_local_xy(samples[0U], reference_rotation_urad, newest_x, newest_y);
+            get_projected_local_xy(samples[sample_count - 1U], reference_rotation_urad, oldest_x, oldest_y);
+        }
+
+        const double movement_x = newest_x - oldest_x;
+        const double movement_y = newest_y - oldest_y;
+        const double dot = (direction_x * movement_x) + (direction_y * movement_y);
+
+        if (dot < 0.0)
+        {
+            direction_x = -direction_x;
+            direction_y = -direction_y;
+        }
+
+        direction_x_out = direction_x;
+        direction_y_out = direction_y;
+        movement_um_out = static_cast<std::int64_t>(std::llround(std::sqrt((movement_x * movement_x) + (movement_y * movement_y))));
+
+        return true;
+    }
+
     std::uint16_t calculate_position_anchor_trajectory_confidence(const accepted_sample *samples, std::uint8_t sample_count, std::int32_t reference_rotation_urad, std::uint32_t median_residual_um)
     {
         if (position_anchor_trajectory_gate_enabled == false)
@@ -1021,17 +1243,22 @@ namespace
             return 0U;
         }
 
-        const std::int64_t local_delta_x_um = newest_sample.local_x_um - oldest_sample.local_x_um;
-        const std::int64_t local_delta_y_um = newest_sample.local_y_um - oldest_sample.local_y_um;
-        std::int64_t projected_local_delta_x_um = 0;
-        std::int64_t projected_local_delta_y_um = 0;
+        double local_tangent_x = 0.0;
+        double local_tangent_y = 0.0;
+        double global_tangent_x = 0.0;
+        double global_tangent_y = 0.0;
+        std::int64_t local_movement_um = 0;
+        std::int64_t global_movement_um = 0;
 
-        rotate_local_delta(local_delta_x_um, local_delta_y_um, reference_rotation_urad, projected_local_delta_x_um, projected_local_delta_y_um);
+        if (calculate_trajectory_tangent(samples, sample_count, true, reference_rotation_urad, local_tangent_x, local_tangent_y, local_movement_um) == false)
+        {
+            return 0U;
+        }
 
-        const std::int64_t global_delta_x_um = newest_sample.x_um - oldest_sample.x_um;
-        const std::int64_t global_delta_y_um = newest_sample.y_um - oldest_sample.y_um;
-        const std::int64_t local_movement_um = calculate_distance_um(projected_local_delta_x_um, projected_local_delta_y_um);
-        const std::int64_t global_movement_um = calculate_distance_um(global_delta_x_um, global_delta_y_um);
+        if (calculate_trajectory_tangent(samples, sample_count, false, reference_rotation_urad, global_tangent_x, global_tangent_y, global_movement_um) == false)
+        {
+            return 0U;
+        }
 
         if (local_movement_um < position_anchor_trajectory_min_movement_um)
         {
@@ -1043,7 +1270,11 @@ namespace
             return 0U;
         }
 
-        const std::int32_t direction_error_urad = calculate_angle_delta_between_vectors_urad(projected_local_delta_x_um, projected_local_delta_y_um, global_delta_x_um, global_delta_y_um);
+        const std::int64_t local_tangent_x_ppm = static_cast<std::int64_t>(std::llround(local_tangent_x * 1000000.0));
+        const std::int64_t local_tangent_y_ppm = static_cast<std::int64_t>(std::llround(local_tangent_y * 1000000.0));
+        const std::int64_t global_tangent_x_ppm = static_cast<std::int64_t>(std::llround(global_tangent_x * 1000000.0));
+        const std::int64_t global_tangent_y_ppm = static_cast<std::int64_t>(std::llround(global_tangent_y * 1000000.0));
+        const std::int32_t direction_error_urad = calculate_angle_delta_between_vectors_urad(local_tangent_x_ppm, local_tangent_y_ppm, global_tangent_x_ppm, global_tangent_y_ppm);
         const std::int64_t ratio_permille = (global_movement_um * 1000LL) / local_movement_um;
         std::int64_t ratio_error_permille = ratio_permille - 1000LL;
 
@@ -2282,6 +2513,12 @@ namespace filtered_global_position
         candidate_anchor_heading_confidence_gain_permille = default_candidate_anchor_heading_confidence_gain_permille;
         candidate_position_anchor_confidence_gain_permille = default_candidate_position_anchor_confidence_gain_permille;
         position_anchor_trajectory_gate_enabled = true;
+        for (std::uint8_t index = 0U; index < local_history_size; index++)
+        {
+            local_history[index] = {};
+        }
+        local_history_count = 0U;
+        last_local_history_time_ms = 0U;
     }
 
     bool set_candidate_anchor_heading_confidence_gain_permille(std::uint16_t gain_permille)
@@ -2328,6 +2565,8 @@ namespace filtered_global_position
 
     output_snapshot update(std::uint32_t now_ms, const motion_mcu_incoming_state::local_position_state &local_position)
     {
+        push_local_history(local_position);
+
         global_position_api::global_position_sample api_sample = {};
         const bool has_sample = global_position_api::read_sample(api_sample);
 

@@ -1,5 +1,7 @@
 #include "local_position_payload.hpp"
 
+#include <Arduino.h>
+
 #include "../../payload_helper_functions.hpp"
 #include "../../state/incoming/incoming_state.hpp"
 
@@ -8,6 +10,7 @@ namespace local_position_payload
     void handle(const std::uint8_t *payload_data, std::uint8_t payload_length)
     {
         motion_mcu_incoming_state::local_position_state state = {};
+        state.received_time_ms = static_cast<std::uint32_t>(millis());
 
         const bool has_pose = payload_helper_functions::read_bool(payload_data, payload_length, 0U, state.has_pose);
         const bool has_x = payload_helper_functions::read_i64_le(payload_data, payload_length, 1U, state.x_um);
