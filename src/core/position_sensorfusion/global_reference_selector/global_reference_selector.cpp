@@ -28,7 +28,7 @@ namespace
     constexpr std::uint8_t request_reason_anchor_outside_safe_area = 5U;
     constexpr std::uint8_t request_reason_pending_locked = 6U;
     constexpr std::uint8_t request_reason_anchor_jump_too_large = 7U;
-    constexpr std::int64_t maximum_anchor_position_jump_um = 250000;
+    constexpr std::int64_t maximum_anchor_position_jump_um = 120000;
 
     struct pending_reference_state
     {
