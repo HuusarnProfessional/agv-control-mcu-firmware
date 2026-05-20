@@ -159,7 +159,9 @@ namespace mission_runner
             return runner_status::mission_not_ready;
         }
 
-        if ((position_sensorfusion_pipeline::is_local_only_mode_enabled() == true) || (position_sensorfusion_pipeline::is_global_anchor_test_mode_enabled() == true))
+        if ((position_sensorfusion_pipeline::is_local_only_mode_enabled() == true) ||
+            (position_sensorfusion_pipeline::is_global_anchor_test_mode_enabled() == true) ||
+            (position_sensorfusion_pipeline::is_filtered_global_only_mode_enabled() == true))
         {
             begin_running();
             return runner_status::ok;

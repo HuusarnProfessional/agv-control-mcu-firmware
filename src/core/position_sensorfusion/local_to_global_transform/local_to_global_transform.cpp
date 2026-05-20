@@ -12,6 +12,7 @@ namespace
     constexpr std::uint16_t full_confidence = 1000U;
     constexpr std::int32_t pi_urad = 3141593;
     constexpr std::int32_t two_pi_urad = 6283185;
+    constexpr std::int64_t maximum_activation_position_jump_um = 350000;
     struct transform_state
     {
         bool valid = false;
@@ -145,6 +146,54 @@ namespace
         return true;
     }
 
+    void rebind_mission_seed_if_branch_changed(const motion_mcu_incoming_state::local_position_state &local_position)
+    {
+        if (active_transform.valid == false)
+        {
+            return;
+        }
+
+        if (active_transform.is_mission_seed == false)
+        {
+            return;
+        }
+
+        if (local_position.has_pose == false)
+        {
+            return;
+        }
+
+        if (local_position.branch_id == active_transform.branch_id)
+        {
+            return;
+        }
+
+        active_transform.local_reference_x_um = local_position.x_um;
+        active_transform.local_reference_y_um = local_position.y_um;
+        active_transform.local_reference_heading_urad = local_position.heading_urad;
+        active_transform.rotation_urad = normalize_angle_urad(active_transform.global_reference_heading_urad - active_transform.local_reference_heading_urad);
+        active_transform.branch_id = local_position.branch_id;
+    }
+
+    bool activation_position_jump_is_safe(const local_to_global_transform::output_snapshot &previous_output, std::int64_t current_x_um, std::int64_t current_y_um)
+    {
+        if (previous_output.has_pose == false)
+        {
+            return true;
+        }
+
+        const std::int64_t delta_x_um = current_x_um - previous_output.x_um;
+        const std::int64_t delta_y_um = current_y_um - previous_output.y_um;
+        const double distance_um = std::sqrt((static_cast<double>(delta_x_um) * static_cast<double>(delta_x_um)) + (static_cast<double>(delta_y_um) * static_cast<double>(delta_y_um)));
+
+        if (distance_um > static_cast<double>(maximum_activation_position_jump_um))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
     void store_anchor_event(const global_reference_selector::reference_activation &activation, const motion_mcu_incoming_state::local_position_state &local_position, const local_to_global_transform::output_snapshot &previous_output)
     {
         const double rotation_rad = static_cast<double>(active_transform.rotation_urad) / 1000000.0;
@@ -216,6 +265,7 @@ namespace
         }
 
         const bool position_only_anchor = activation.type == global_reference_selector::anchor_type::position_only;
+        const transform_state previous_transform = active_transform;
         const std::int32_t previous_rotation_urad = active_transform.rotation_urad;
         const std::uint16_t previous_heading_confidence = active_transform.confidence_heading;
 
@@ -246,7 +296,15 @@ namespace
 
         if (position_only_anchor == true)
         {
-            active_transform.rotation_urad = previous_rotation_urad;
+            if (activation.global_reference.has_heading == true)
+            {
+                active_transform.rotation_urad = normalize_angle_urad(activation.global_reference.heading_urad - active_transform.local_reference_heading_urad);
+            }
+            else
+            {
+                active_transform.rotation_urad = previous_rotation_urad;
+            }
+
             active_transform.global_reference_heading_urad = normalize_angle_urad(active_transform.local_reference_heading_urad + active_transform.rotation_urad);
         }
         else
@@ -262,6 +320,17 @@ namespace
         active_transform.is_mission_seed = activation.is_mission_seed;
         active_transform.activation_time_ms = activation.activation_time_ms;
 
+        std::int64_t activation_x_um = 0;
+        std::int64_t activation_y_um = 0;
+        std::int32_t activation_heading_urad = 0;
+        const bool has_activation_pose = calculate_projected_pose(local_position, activation_x_um, activation_y_um, activation_heading_urad);
+
+        if ((has_activation_pose == true) && (activation_position_jump_is_safe(previous_output, activation_x_um, activation_y_um) == false))
+        {
+            active_transform = previous_transform;
+            return false;
+        }
+
         store_anchor_event(activation, local_position, previous_output);
 
         return true;
@@ -272,6 +341,8 @@ namespace
         local_to_global_transform::output_snapshot output = {};
 
         output.transform_activated = transform_activated;
+
+        rebind_mission_seed_if_branch_changed(local_position);
 
         if (local_position.has_pose == false)
         {

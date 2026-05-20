@@ -14,11 +14,19 @@
 namespace
 {
     constexpr std::uint32_t sensorfusion_hold_last_valid_ms = 1500U;
+    constexpr std::uint16_t mission_seed_heading_confidence = 700U;
+    constexpr std::int32_t pi_urad = 3141593;
+    constexpr std::int32_t two_pi_urad = 6283185;
 
     bool previous_mission_running = false;
     bool bypass_offset_fusion = false;
     bool local_only_mode = false;
     bool global_anchor_test_mode = false;
+    bool filtered_global_only_mode = true;
+    bool has_filtered_global_only_seed_heading = false;
+    std::int32_t filtered_global_only_seed_heading_urad = 0;
+    bool has_filtered_global_only_heading_rotation = false;
+    std::int32_t filtered_global_only_heading_rotation_urad = 0;
     bool has_last_valid_output = false;
     std::uint32_t last_valid_output_time_ms = 0U;
     position_sensorfusion::output_snapshot last_valid_output = {};
@@ -43,6 +51,21 @@ namespace
         (void)position_correction_payload::send(reference_decision.request.pose_id, reference_decision.request.branch_id);
     }
 
+    std::int32_t normalize_angle_urad(std::int32_t angle_urad)
+    {
+        while (angle_urad > pi_urad)
+        {
+            angle_urad -= two_pi_urad;
+        }
+
+        while (angle_urad < -pi_urad)
+        {
+            angle_urad += two_pi_urad;
+        }
+
+        return angle_urad;
+    }
+
     position_sensorfusion::output_snapshot convert_output(const local_to_global_transform::output_snapshot &transformed_local_position)
     {
         position_sensorfusion::output_snapshot output = {};
@@ -55,6 +78,81 @@ namespace
         output.confidence_heading = transformed_local_position.confidence_heading;
         output.pose_id = transformed_local_position.pose_id;
         output.branch_id = transformed_local_position.branch_id;
+
+        return output;
+    }
+
+    void reset_filtered_global_only_heading()
+    {
+        has_filtered_global_only_seed_heading = false;
+        filtered_global_only_seed_heading_urad = 0;
+        has_filtered_global_only_heading_rotation = false;
+        filtered_global_only_heading_rotation_urad = 0;
+    }
+
+    void update_filtered_global_only_seed_heading(const motion_mcu_incoming_state::local_position_state &local_position)
+    {
+        if (has_filtered_global_only_seed_heading == true)
+        {
+            if ((has_filtered_global_only_heading_rotation == false) && (local_position.has_pose == true))
+            {
+                has_filtered_global_only_heading_rotation = true;
+                filtered_global_only_heading_rotation_urad = normalize_angle_urad(filtered_global_only_seed_heading_urad - local_position.heading_urad);
+            }
+
+            return;
+        }
+
+        if (mission_runner::is_running() == false)
+        {
+            return;
+        }
+
+        std::int32_t seed_heading_urad = 0;
+
+        if (mission_reference_seed::read_seed_heading(seed_heading_urad) == false)
+        {
+            return;
+        }
+
+        has_filtered_global_only_seed_heading = true;
+        filtered_global_only_seed_heading_urad = seed_heading_urad;
+
+        if (local_position.has_pose == true)
+        {
+            has_filtered_global_only_heading_rotation = true;
+            filtered_global_only_heading_rotation_urad = normalize_angle_urad(filtered_global_only_seed_heading_urad - local_position.heading_urad);
+        }
+    }
+
+    position_sensorfusion::output_snapshot convert_filtered_global_output(const filtered_global_position::output_snapshot &filtered_position, const motion_mcu_incoming_state::local_position_state &local_position)
+    {
+        position_sensorfusion::output_snapshot output = {};
+
+        if (filtered_position.has_position == false)
+        {
+            return output;
+        }
+
+        output.has_pose = true;
+        output.x_um = filtered_position.x_um;
+        output.y_um = filtered_position.y_um;
+        output.confidence_position = filtered_position.confidence_position;
+        output.pose_id = 0U;
+        output.branch_id = 0U;
+
+        if ((has_filtered_global_only_heading_rotation == true) && (local_position.has_pose == true))
+        {
+            output.heading_urad = normalize_angle_urad(local_position.heading_urad + filtered_global_only_heading_rotation_urad);
+            output.confidence_heading = local_position.confidence_heading;
+            return output;
+        }
+
+        if (has_filtered_global_only_seed_heading == true)
+        {
+            output.heading_urad = filtered_global_only_seed_heading_urad;
+            output.confidence_heading = mission_seed_heading_confidence;
+        }
 
         return output;
     }
@@ -93,6 +191,7 @@ namespace
             global_reference_selector::reset_runtime_state();
             local_to_global_transform::reset_runtime_state();
             filtered_global_offset_fusion::reset_runtime_state();
+            reset_filtered_global_only_heading();
             has_last_valid_output = false;
             last_valid_output_time_ms = 0U;
             last_valid_output = {};
@@ -108,6 +207,11 @@ namespace
             has_last_valid_output = true;
             last_valid_output_time_ms = now_ms;
             last_valid_output = output;
+            return output;
+        }
+
+        if (mission_runner::is_running() == true)
+        {
             return output;
         }
 
@@ -139,6 +243,8 @@ namespace position_sensorfusion_pipeline
         bypass_offset_fusion = false;
         local_only_mode = false;
         global_anchor_test_mode = false;
+        filtered_global_only_mode = true;
+        reset_filtered_global_only_heading();
         has_last_valid_output = false;
         last_valid_output_time_ms = 0U;
         last_valid_output = {};
@@ -148,6 +254,7 @@ namespace position_sensorfusion_pipeline
     {
         bypass_offset_fusion = enabled;
         filtered_global_offset_fusion::reset_runtime_state();
+        reset_filtered_global_only_heading();
         has_last_valid_output = false;
         last_valid_output_time_ms = 0U;
         last_valid_output = {};
@@ -164,10 +271,12 @@ namespace position_sensorfusion_pipeline
         if (enabled == true)
         {
             global_anchor_test_mode = false;
+            filtered_global_only_mode = false;
         }
         global_reference_selector::reset_runtime_state();
         local_to_global_transform::reset_runtime_state();
         filtered_global_offset_fusion::reset_runtime_state();
+        reset_filtered_global_only_heading();
         has_last_valid_output = false;
         last_valid_output_time_ms = 0U;
         last_valid_output = {};
@@ -185,10 +294,12 @@ namespace position_sensorfusion_pipeline
         if (enabled == true)
         {
             local_only_mode = false;
+            filtered_global_only_mode = false;
         }
         global_reference_selector::reset_runtime_state();
         local_to_global_transform::reset_runtime_state();
         filtered_global_offset_fusion::reset_runtime_state();
+        reset_filtered_global_only_heading();
         has_last_valid_output = false;
         last_valid_output_time_ms = 0U;
         last_valid_output = {};
@@ -200,12 +311,43 @@ namespace position_sensorfusion_pipeline
         return global_anchor_test_mode;
     }
 
+    void set_filtered_global_only_mode(bool enabled)
+    {
+        filtered_global_only_mode = enabled;
+        if (enabled == true)
+        {
+            local_only_mode = false;
+            global_anchor_test_mode = false;
+        }
+        global_reference_selector::reset_runtime_state();
+        local_to_global_transform::reset_runtime_state();
+        filtered_global_offset_fusion::reset_runtime_state();
+        reset_filtered_global_only_heading();
+        has_last_valid_output = false;
+        last_valid_output_time_ms = 0U;
+        last_valid_output = {};
+        position_sensorfusion::set_output({});
+    }
+
+    bool is_filtered_global_only_mode_enabled()
+    {
+        return filtered_global_only_mode;
+    }
+
     void tick(std::uint32_t now_ms)
     {
         update_mission_runtime_state();
 
         const motion_mcu_incoming_state::local_position_state local_position = motion_mcu_incoming_state::get_local_position();
         filtered_global_position::output_snapshot strong_global_position = filtered_global_position::update(now_ms, local_position);
+
+        if (filtered_global_only_mode == true)
+        {
+            update_filtered_global_only_seed_heading(local_position);
+            position_sensorfusion::set_output(hold_last_valid_output_if_needed(convert_filtered_global_output(strong_global_position, local_position), now_ms));
+            return;
+        }
+
         const local_to_global_transform::output_snapshot current_transformed_local_position = local_to_global_transform::read_output(local_position, now_ms);
         const global_reference_selector::current_reference_snapshot current_reference = convert_current_reference(local_position, current_transformed_local_position);
         strong_global_position = filtered_global_position::update_position_anchor_reference(now_ms, current_reference.has_reference, current_transformed_local_position.rotation_urad);

@@ -123,6 +123,21 @@ namespace mission_reference_seed
         return seed_pending;
     }
 
+    bool read_seed_heading(std::int32_t &heading_urad_out)
+    {
+        pure_pursuit_internal::path_point first_point = {};
+        pure_pursuit_internal::path_point second_point = {};
+        const bool has_first_segment = read_first_segment(first_point, second_point);
+
+        if (has_first_segment == false)
+        {
+            return false;
+        }
+
+        heading_urad_out = calculate_heading_urad(first_point, second_point);
+        return true;
+    }
+
     global_reference_selector::reference_activation update(const motion_mcu_incoming_state::local_position_state &local_position, const global_reference_selector::current_reference_snapshot &current_reference, std::uint32_t now_ms)
     {
         (void)current_reference;

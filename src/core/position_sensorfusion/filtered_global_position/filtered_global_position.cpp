@@ -33,8 +33,9 @@ namespace
     constexpr std::int64_t hampel_speed_margin_um_per_ms = 700;
     constexpr std::uint8_t minimum_speeds_for_hampel = 3U;
 
-    constexpr std::int64_t position_step_base_um = 30000;
-    constexpr std::int64_t position_step_speed_um_per_ms = 300;
+    constexpr std::int64_t position_step_base_um = 50000;
+    constexpr std::int64_t position_step_speed_um_per_ms = 500;
+    constexpr std::uint16_t position_filter_memory_confidence_cap = 400U;
 
     constexpr std::int64_t chord_heading_min_distance_um = 300000;
     constexpr std::int64_t chord_heading_full_distance_um = 900000;
@@ -54,9 +55,9 @@ namespace
     constexpr std::uint32_t huber_pca_good_residual_um = 20000U;
     constexpr std::uint32_t huber_pca_zero_residual_um = 120000U;
     constexpr std::uint8_t huber_pca_iteration_count = 6U;
-    constexpr std::uint32_t position_anchor_max_age_ms = 1200U;
-    constexpr std::uint32_t position_anchor_estimated_delay_ms = 500U;
-    constexpr std::uint32_t position_anchor_reference_window_ms = 500U;
+    constexpr std::uint32_t position_anchor_max_age_ms = 1100U;
+    constexpr std::uint32_t position_anchor_estimated_delay_ms = 250U;
+    constexpr std::uint32_t position_anchor_reference_window_ms = 650U;
     constexpr std::uint8_t position_anchor_min_sample_count = 3U;
     constexpr std::uint8_t position_anchor_full_sample_count = 7U;
     constexpr std::uint8_t position_anchor_max_sample_count = 7U;
@@ -75,7 +76,7 @@ namespace
     constexpr std::uint32_t position_anchor_trajectory_good_residual_um = 60000U;
     constexpr std::uint32_t position_anchor_trajectory_zero_residual_um = 180000U;
     constexpr std::uint16_t default_candidate_anchor_heading_confidence_gain_permille = 2500U;
-    constexpr std::uint16_t default_candidate_position_anchor_confidence_gain_permille = 1200U;
+    constexpr std::uint16_t default_candidate_position_anchor_confidence_gain_permille = 2500U;
     constexpr std::uint16_t maximum_candidate_anchor_confidence_gain_permille = 10000U;
 
     constexpr std::uint32_t position_confidence_full_age_ms = 250U;
@@ -2301,15 +2302,22 @@ namespace
             return;
         }
 
-        std::int64_t step_x_um = weighted_step_um(sample.x_um - stable.x_um, stable.confidence_position, filtered_confidence);
-        std::int64_t step_y_um = weighted_step_um(sample.y_um - stable.y_um, stable.confidence_position, filtered_confidence);
+        std::uint16_t filter_memory_confidence = stable.confidence_position;
+
+        if (filter_memory_confidence > position_filter_memory_confidence_cap)
+        {
+            filter_memory_confidence = position_filter_memory_confidence_cap;
+        }
+
+        std::int64_t step_x_um = weighted_step_um(sample.x_um - stable.x_um, filter_memory_confidence, filtered_confidence);
+        std::int64_t step_y_um = weighted_step_um(sample.y_um - stable.y_um, filter_memory_confidence, filtered_confidence);
         const std::int64_t max_step_um = calculate_max_position_step_um(sample.received_time_ms);
 
         limit_step_vector(step_x_um, step_y_um, max_step_um);
 
         stable.x_um += step_x_um;
         stable.y_um += step_y_um;
-        stable.z_um += weighted_step_um(sample.z_um - stable.z_um, stable.confidence_position, filtered_confidence);
+        stable.z_um += weighted_step_um(sample.z_um - stable.z_um, filter_memory_confidence, filtered_confidence);
         stable.confidence_position = larger_confidence(stable.confidence_position, filtered_confidence);
         stable.position_time_ms = sample.received_time_ms;
         stable.position_reference_time_ms = sample.received_time_ms;

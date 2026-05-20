@@ -9,6 +9,7 @@ namespace
     constexpr std::uint16_t minimum_anchor_confidence = 300U;
     constexpr std::uint16_t reference_switch_margin_percent = 10U;
     constexpr std::uint16_t pending_switch_margin_percent = 25U;
+    constexpr std::uint32_t forced_position_anchor_interval_ms = 1000U;
     constexpr std::uint32_t minimum_request_interval_ms = 1000U;
     constexpr std::uint32_t pending_request_timeout_ms = 3000U;
     constexpr std::uint32_t settling_time_ms = 500U;
@@ -28,6 +29,7 @@ namespace
     constexpr std::uint8_t request_reason_anchor_outside_safe_area = 5U;
     constexpr std::uint8_t request_reason_pending_locked = 6U;
     constexpr std::uint8_t request_reason_anchor_jump_too_large = 7U;
+    constexpr std::uint8_t request_reason_forced_interval = 8U;
     constexpr std::int64_t maximum_anchor_position_jump_um = 350000;
 
     struct pending_reference_state
@@ -48,6 +50,8 @@ namespace
     std::uint32_t last_request_time_ms = 0U;
     std::uint32_t last_request_global_sample_id = 0U;
     std::uint16_t last_request_confidence = 0U;
+    bool has_forced_position_anchor_timer = false;
+    std::uint32_t forced_position_anchor_timer_ms = 0U;
     global_reference_selector::output_snapshot latest_output = {};
     bool heading_anchor_enabled = true;
     bool position_anchor_enabled = true;
@@ -115,6 +119,11 @@ namespace
     bool confidence_is_better_by_percent(std::uint16_t new_confidence, std::uint16_t old_confidence, std::uint16_t margin_percent)
     {
         const std::uint16_t required_confidence = calculate_margin_confidence(old_confidence, margin_percent);
+
+        if ((required_confidence == full_confidence) && (new_confidence == full_confidence))
+        {
+            return true;
+        }
 
         if (new_confidence > required_confidence)
         {
@@ -236,12 +245,7 @@ namespace
             return false;
         }
 
-        if (global_position_has_heading_anchor_shape(global_position) == false)
-        {
-            return false;
-        }
-
-        if (heading_anchor_reference_is_inside_safe_area(global_position) == false)
+        if (global_position.position_reference_branch_id > 1U)
         {
             return false;
         }
@@ -649,6 +653,12 @@ namespace
             std::int64_t current_anchor_x_um = 0;
             std::int64_t current_anchor_y_um = 0;
 
+            if (current_reference.has_heading == false)
+            {
+                pending_reference = {};
+                return request;
+            }
+
             if (project_position_anchor_to_current_pose(global_position, current_reference, current_anchor_x_um, current_anchor_y_um) == false)
             {
                 pending_reference = {};
@@ -659,6 +669,8 @@ namespace
             pending_reference.source_branch_id = local_position.branch_id;
             pending_reference.global_reference.x_um = current_anchor_x_um;
             pending_reference.global_reference.y_um = current_anchor_y_um;
+            pending_reference.global_reference.has_heading = true;
+            pending_reference.global_reference.heading_urad = current_reference.heading_urad;
             pending_reference.global_reference.received_time_ms = now_ms;
         }
 
@@ -701,6 +713,31 @@ namespace
         }
 
         return false;
+    }
+
+    bool forced_position_anchor_interval_has_passed(std::uint32_t now_ms)
+    {
+        if (has_forced_position_anchor_timer == false)
+        {
+            has_forced_position_anchor_timer = true;
+            forced_position_anchor_timer_ms = now_ms;
+            return false;
+        }
+
+        const std::uint32_t age_ms = get_age_ms(now_ms, forced_position_anchor_timer_ms);
+
+        if (age_ms >= forced_position_anchor_interval_ms)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    void reset_forced_position_anchor_timer(std::uint32_t now_ms)
+    {
+        has_forced_position_anchor_timer = true;
+        forced_position_anchor_timer_ms = now_ms;
     }
 
     global_reference_selector::anchor_type choose_debug_candidate_anchor_type(std::uint16_t heading_anchor_confidence, std::uint16_t position_anchor_confidence, bool heading_consistent, const global_reference_selector::current_reference_snapshot &current_reference)
@@ -797,6 +834,8 @@ namespace global_reference_selector
         last_request_time_ms = 0U;
         last_request_global_sample_id = 0U;
         last_request_confidence = 0U;
+        has_forced_position_anchor_timer = false;
+        forced_position_anchor_timer_ms = 0U;
         latest_output = {};
     }
 
@@ -863,8 +902,20 @@ namespace global_reference_selector
             return latest_output;
         }
 
-        const anchor_type selected_type = choose_anchor_type_for_margin(candidate_heading_anchor_confidence, candidate_position_anchor_confidence, candidate_anchor_heading_consistent, current_reference, local_reference_confidence, reference_switch_margin_percent);
-        const std::uint16_t selected_confidence = get_candidate_confidence_for_type(candidate_heading_anchor_confidence, candidate_position_anchor_confidence, selected_type);
+        anchor_type selected_type = choose_anchor_type_for_margin(candidate_heading_anchor_confidence, candidate_position_anchor_confidence, candidate_anchor_heading_consistent, current_reference, local_reference_confidence, reference_switch_margin_percent);
+        std::uint16_t selected_confidence = get_candidate_confidence_for_type(candidate_heading_anchor_confidence, candidate_position_anchor_confidence, selected_type);
+        bool forced_interval_request = false;
+
+        if ((selected_type == anchor_type::none) &&
+            (current_reference.has_reference == true) &&
+            (candidate_position_anchor_confidence >= minimum_anchor_confidence) &&
+            (forced_position_anchor_interval_has_passed(now_ms) == true))
+        {
+            selected_type = anchor_type::position_only;
+            selected_confidence = candidate_position_anchor_confidence;
+            forced_interval_request = true;
+        }
+
         output.candidate_anchor_type = selected_type;
         output.candidate_anchor_confidence = selected_confidence;
 
@@ -920,7 +971,16 @@ namespace global_reference_selector
         output.pending_global_sample_id = pending_reference.global_reference.sample_id;
         if (output.request.has_request == true)
         {
-            output.request_reason = request_reason_switch_margin;
+            reset_forced_position_anchor_timer(now_ms);
+
+            if (forced_interval_request == true)
+            {
+                output.request_reason = request_reason_forced_interval;
+            }
+            else
+            {
+                output.request_reason = request_reason_switch_margin;
+            }
         }
         latest_output = output;
 

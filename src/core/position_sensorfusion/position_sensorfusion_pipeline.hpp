@@ -18,5 +18,9 @@ namespace position_sensorfusion_pipeline
 
     bool is_global_anchor_test_mode_enabled();
 
+    void set_filtered_global_only_mode(bool enabled);
+
+    bool is_filtered_global_only_mode_enabled();
+
     void tick(std::uint32_t now_ms);
 }

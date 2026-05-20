@@ -42,4 +42,38 @@ namespace debug_handlers
 
         return handler_helpers::write_response_text(response);
     }
+
+    bool handle_get_anchor_selector_debug()
+    {
+        if (middleware_parse_helpers::read_end(debug_handler_helpers::timeout_us) == false)
+        {
+            return debug_handler_helpers::write_bad_format();
+        }
+
+        const global_reference_selector::output_snapshot state = global_reference_selector::read_output();
+
+        char response[240] = {};
+        const int length = std::snprintf(
+            response,
+            sizeof(response),
+            "anchor_selector local %u pos %u head %u cand %u type %u req %u reason %u pending %lu request %lu pose %u branch %u",
+            static_cast<unsigned>(state.local_reference_confidence),
+            static_cast<unsigned>(state.candidate_position_anchor_confidence),
+            static_cast<unsigned>(state.candidate_anchor_heading_confidence),
+            static_cast<unsigned>(state.candidate_anchor_confidence),
+            static_cast<unsigned>(state.candidate_anchor_type),
+            static_cast<unsigned>(state.required_anchor_confidence),
+            static_cast<unsigned>(state.request_reason),
+            static_cast<unsigned long>(bool_to_u32(state.pending)),
+            static_cast<unsigned long>(bool_to_u32(state.request.has_request)),
+            static_cast<unsigned>(state.request.pose_id),
+            static_cast<unsigned>(state.request.branch_id));
+
+        if ((length <= 0) || (static_cast<std::size_t>(length) >= sizeof(response)))
+        {
+            return false;
+        }
+
+        return handler_helpers::write_response_text(response);
+    }
 }

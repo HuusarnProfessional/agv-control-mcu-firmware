@@ -13,5 +13,7 @@ namespace mission_reference_seed
 
     bool is_pending();
 
+    bool read_seed_heading(std::int32_t &heading_urad_out);
+
     global_reference_selector::reference_activation update(const motion_mcu_incoming_state::local_position_state &local_position, const global_reference_selector::current_reference_snapshot &current_reference, std::uint32_t now_ms);
 }
