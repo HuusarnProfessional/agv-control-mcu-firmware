@@ -2,11 +2,13 @@
 
 #include "incoming_payload_definition.hpp"
 #include "runtime/local_position_payload.hpp"
+#include "runtime/motion_primitive_status_payload.hpp"
 #include "runtime/power_status_payload.hpp"
 #include "runtime/safety_status_payload.hpp"
 #include "../../../platform/esp_uart_api.hpp"
 #include "../heartbeat/motion_mcu_heartbeat.hpp"
 #include "../motion_mcu_routes.hpp"
+#include "../state/incoming/incoming_state.hpp"
 
 namespace
 {
@@ -28,7 +30,8 @@ namespace
     {
         { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::local_position), local_position_payload::handle },
         { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::safety_status), safety_status_payload::handle },
-        { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::power_status), power_status_payload::handle }
+        { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::power_status), power_status_payload::handle },
+        { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::motion_primitive_status), motion_primitive_status_payload::handle }
     };
 
     void reset_parser()
@@ -118,6 +121,7 @@ namespace incoming_motion_mcu_pipeline
     void init()
     {
         reset_parser();
+        motion_mcu_incoming_state::init();
         motion_mcu_heartbeat::init();
     }
 
@@ -127,7 +131,7 @@ namespace incoming_motion_mcu_pipeline
 
         std::uint8_t read_buffer[32u] = {};
         std::size_t read_count = esp_uart_api::read_bytes(
-            esp_uart_api::motion_mcu_uart_id,
+            esp_uart_api::uart_channel::motion_mcu,
             read_buffer,
             sizeof(read_buffer));
 

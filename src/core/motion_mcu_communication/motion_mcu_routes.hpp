@@ -5,13 +5,14 @@
 namespace motion_mcu_routes
 {
     constexpr std::uint8_t packet_sync = 0xA5U;
-    constexpr std::uint8_t max_payload_length = 64U;
+    constexpr std::uint8_t max_payload_length = 128U;
 
     enum class incoming_payload_id : std::uint8_t
     {
         local_position = 0x01U,
         safety_status = 0x02U,
-        power_status = 0x03U
+        power_status = 0x03U,
+        motion_primitive_status = 0x04U
     };
 
     enum class outgoing_payload_id : std::uint8_t

@@ -1,13 +1,16 @@
 #include "local_position_payload.hpp"
 
+#include <Arduino.h>
+
 #include "../../payload_helper_functions.hpp"
-#include "../../motion_mcu_runtime.hpp"
+#include "../../state/incoming/incoming_state.hpp"
 
 namespace local_position_payload
 {
     void handle(const std::uint8_t *payload_data, std::uint8_t payload_length)
     {
-        motion_mcu_runtime::local_position_state state = {};
+        motion_mcu_incoming_state::local_position_state state = {};
+        state.received_time_ms = static_cast<std::uint32_t>(millis());
 
         const bool has_pose = payload_helper_functions::read_bool(payload_data, payload_length, 0U, state.has_pose);
         const bool has_x = payload_helper_functions::read_i64_le(payload_data, payload_length, 1U, state.x_um);
@@ -15,8 +18,8 @@ namespace local_position_payload
         const bool has_heading = payload_helper_functions::read_i32_le(payload_data, payload_length, 17U, state.heading_urad);
         const bool has_confidence_position = payload_helper_functions::read_u16_le(payload_data, payload_length, 21U, state.confidence_position);
         const bool has_confidence_heading = payload_helper_functions::read_u16_le(payload_data, payload_length, 23U, state.confidence_heading);
-        const bool has_pose_id = payload_helper_functions::read_u8(payload_data, payload_length, 25U, state.pose_id);
-        const bool has_branch_id = payload_helper_functions::read_u8(payload_data, payload_length, 26U, state.branch_id);
+        const bool has_pose_id = payload_helper_functions::read_u16_le(payload_data, payload_length, 25U, state.pose_id);
+        const bool has_branch_id = payload_helper_functions::read_u8(payload_data, payload_length, 27U, state.branch_id);
 
         if ((has_pose == true) &&
             (has_x == true) &&
@@ -27,7 +30,7 @@ namespace local_position_payload
             (has_pose_id == true) &&
             (has_branch_id == true))
         {
-            motion_mcu_runtime::set_local_position(state);
+            motion_mcu_incoming_state::set_local_position(state);
         }
     }
 }

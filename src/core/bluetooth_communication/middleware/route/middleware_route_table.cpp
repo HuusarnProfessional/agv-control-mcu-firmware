@@ -16,8 +16,11 @@ namespace
         {"reset()", incoming_request_handlers::handle_reset},
         {"get_speed()", incoming_request_handlers::handle_get_speed},
         {"get_position_local()", incoming_request_handlers::handle_get_position_local},
+        {"get_position_sensorfusion()", incoming_request_handlers::handle_get_position_sensorfusion},
         {"get_position_global()", incoming_request_handlers::handle_get_position_global},
+        {"set_position_local_reset()", incoming_request_handlers::handle_set_position_local_reset},
         {"set_armed(bool:is_armed)", incoming_request_handlers::handle_set_armed},
+        {"set_obstacle_safety(bool:enabled)", incoming_request_handlers::handle_set_obstacle_safety},
         {"get_armed()", incoming_request_handlers::handle_get_armed},
         {"set_drive_forward_mm(int16_t:distance_mm)", incoming_request_handlers::handle_set_drive_forward_mm},
         {"set_mission_new(const char:mission_id,uint16_t:number_of_parts)", incoming_request_handlers::handle_set_mission_new},
@@ -28,10 +31,13 @@ namespace
         {"set_pause_ms(uint32_t duration_ms)", incoming_request_handlers::handle_set_pause_ms},
         {"set_speed(uint16_t:speed_mm_per_s)", incoming_request_handlers::handle_set_speed},
         {"get_mission_part_current()", incoming_request_handlers::handle_get_mission_part_current},
+        {"get_mission_status()", incoming_request_handlers::handle_get_mission_status},
         {"set_drive_rotate_deg(int16_t:delta_heading)", incoming_request_handlers::handle_set_drive_rotate_deg},
         {"set_watch_keep_alive(uint16_t:timeout_ms)", incoming_request_handlers::handle_set_watch_keep_alive},
         {"set_watch_add(const char:command,uint16_t:interval_ms)", incoming_request_handlers::handle_set_watch_add},
         {"set_watch_remove(const char:command,uint16_t:interval_ms)", incoming_request_handlers::handle_set_watch_remove},
+        {"set_imu_calibration_start()", incoming_request_handlers::handle_set_imu_calibration_start},
+        {"set_imu_calibration_clear()", incoming_request_handlers::handle_set_imu_calibration_clear},
         {"dummy()", incoming_request_handlers::handle_dummy}
     };
 

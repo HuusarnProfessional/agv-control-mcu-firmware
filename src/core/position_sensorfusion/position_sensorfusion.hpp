@@ -12,7 +12,7 @@ namespace position_sensorfusion
         std::int32_t heading_urad = 0;
         std::uint16_t confidence_position = 0U;
         std::uint16_t confidence_heading = 0U;
-        std::uint8_t pose_id = 0U;
+        std::uint16_t pose_id = 0U;
         std::uint8_t branch_id = 0U;
     };
 

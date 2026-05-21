@@ -10,6 +10,13 @@
 
 namespace
 {
+    constexpr std::uint8_t stop_reason_none = 0U;
+    constexpr std::uint8_t stop_reason_heartbeat = 1U;
+    constexpr std::uint8_t stop_reason_no_pose = 2U;
+    constexpr std::uint8_t stop_reason_goal_success = 3U;
+    constexpr std::uint8_t stop_reason_goal_fail = 4U;
+    constexpr std::uint8_t stop_reason_external_stop = 5U;
+
     struct closest_path_state
     {
         std::uint16_t segment_index = 0u;
@@ -22,10 +29,20 @@ namespace
 
     void finish_path(bool success)
     {
+        if (success == true)
+        {
+            g_snapshot.stop_reason = stop_reason_goal_success;
+        }
+        else
+        {
+            g_snapshot.stop_reason = stop_reason_goal_fail;
+        }
+
         pure_pursuit_internal::send_stop_motion(g_snapshot);
         g_snapshot.active = false;
         g_snapshot.complete = true;
         g_snapshot.success = success;
+
     }
 
     bool tick_validate_runtime(const position_sensorfusion::output_snapshot &local_position, const motion_mcu_heartbeat::snapshot &heartbeat)
@@ -33,13 +50,65 @@ namespace
         if (heartbeat.packet_timed_out == true)
         {
             pure_pursuit_internal::send_stop_motion(g_snapshot);
+            g_snapshot.active = false;
+            g_snapshot.complete = true;
+            g_snapshot.success = false;
+            g_snapshot.stop_reason = stop_reason_heartbeat;
             return false;
         }
 
         if (local_position.has_pose == false)
         {
             pure_pursuit_internal::send_stop_motion(g_snapshot);
+            g_snapshot.active = false;
+            g_snapshot.complete = true;
+            g_snapshot.success = false;
+            g_snapshot.stop_reason = stop_reason_no_pose;
             return false;
+        }
+
+        return true;
+    }
+
+    double calculate_segment_length_mm(const pure_pursuit_internal::path_point &point_a, const pure_pursuit_internal::path_point &point_b)
+    {
+        const double delta_x_mm = static_cast<double>(point_b.x_mm) - static_cast<double>(point_a.x_mm);
+        const double delta_y_mm = static_cast<double>(point_b.y_mm) - static_cast<double>(point_a.y_mm);
+
+        return std::sqrt((delta_x_mm * delta_x_mm) + (delta_y_mm * delta_y_mm));
+    }
+
+    bool calculate_remaining_path_distance_mm(const closest_path_state &closest, double &remaining_distance_mm)
+    {
+        remaining_distance_mm = 0.0;
+
+        if (g_snapshot.point_count <= 1u)
+        {
+            return true;
+        }
+
+        for (std::uint16_t index = closest.segment_index; index + 1u < g_snapshot.point_count; ++index)
+        {
+            pure_pursuit_internal::path_point point_a = {};
+            pure_pursuit_internal::path_point point_b = {};
+            const bool has_point_a = pure_pursuit_internal::get_point(g_snapshot.part_number, index, point_a);
+            const bool has_point_b = pure_pursuit_internal::get_point(g_snapshot.part_number, static_cast<std::uint16_t>(index + 1u), point_b);
+
+            if ((has_point_a == false) || (has_point_b == false))
+            {
+                return false;
+            }
+
+            const double segment_length_mm = calculate_segment_length_mm(point_a, point_b);
+
+            if (index == closest.segment_index)
+            {
+                remaining_distance_mm += segment_length_mm * (1.0 - closest.segment_t);
+            }
+            else
+            {
+                remaining_distance_mm += segment_length_mm;
+            }
         }
 
         return true;
@@ -70,6 +139,7 @@ namespace
         }
 
         const std::uint16_t segment_start_index = start_index > 0u ? static_cast<std::uint16_t>(start_index - 1u) : 0u;
+        double checked_path_distance_mm = 0.0;
         double best_distance_sq = 0.0;
         bool has_best = false;
 
@@ -93,6 +163,12 @@ namespace
                 continue;
             }
 
+            if (checked_path_distance_mm > pure_pursuit_tuning::k_mission_max_closest_progress_advance_mm)
+            {
+                break;
+            }
+
+            const double segment_length_mm = calculate_segment_length_mm(point_a, point_b);
             const double ax = static_cast<double>(point_a.x_mm);
             const double ay = static_cast<double>(point_a.y_mm);
             const double bx = static_cast<double>(point_b.x_mm);
@@ -123,6 +199,8 @@ namespace
                 best.y_mm = py;
                 has_best = true;
             }
+
+            checked_path_distance_mm += segment_length_mm;
         }
 
         return best;
@@ -163,7 +241,25 @@ namespace
         {
             if (lookahead_step_count >= pure_pursuit_tuning::k_mission_max_lookahead_segment_steps)
             {
-                break;
+                pure_pursuit_internal::path_point point_a = {};
+                pure_pursuit_internal::path_point point_b = {};
+                const bool has_point_a = pure_pursuit_internal::get_point(g_snapshot.part_number, segment_index, point_a);
+                const bool has_point_b = pure_pursuit_internal::get_point(g_snapshot.part_number, static_cast<std::uint16_t>(segment_index + 1u), point_b);
+
+                if ((has_point_a == true) && (has_point_b == true))
+                {
+                    const double ax = static_cast<double>(point_a.x_mm);
+                    const double ay = static_cast<double>(point_a.y_mm);
+                    const double bx = static_cast<double>(point_b.x_mm);
+                    const double by = static_cast<double>(point_b.y_mm);
+                    target_x_mm = ax + ((bx - ax) * segment_t);
+                    target_y_mm = ay + ((by - ay) * segment_t);
+                    return segment_index;
+                }
+
+                target_x_mm = 0.0;
+                target_y_mm = 0.0;
+                return 0u;
             }
 
             ++lookahead_step_count;
@@ -231,6 +327,11 @@ namespace
         const std::uint16_t fallback_index = find_lookahead_target_from_progress(closest, pure_pursuit_tuning::k_mission_lookahead_mm, fallback_x_mm, fallback_y_mm);
         pure_pursuit_internal::driveable_target_state fallback = pure_pursuit_internal::evaluate_driveable_target(robot_x_mm, robot_y_mm, heading_rad, fallback_x_mm, fallback_y_mm, fallback_index);
 
+        if (fallback.valid == true)
+        {
+            return fallback;
+        }
+
         double scan_distance_mm = pure_pursuit_tuning::k_mission_driveable_target_scan_start_mm;
 
         for (std::uint8_t scan_index = 0u; scan_index < pure_pursuit_tuning::k_mission_driveable_target_scan_count; ++scan_index)
@@ -265,6 +366,7 @@ namespace
         g_snapshot.left_mm = target.left_mm;
         g_snapshot.heading_error_deg = heading_error_deg;
     }
+
 }
 
 namespace pure_pursuit
@@ -291,6 +393,11 @@ namespace pure_pursuit
             return;
         }
 
+        const double x_mm = static_cast<double>(local_position.x_um) / 1000.0;
+        const double y_mm = static_cast<double>(local_position.y_um) / 1000.0;
+        const closest_path_state closest = find_closest_path_state(x_mm, y_mm, g_snapshot.closest_point_index);
+        g_snapshot.closest_point_index = closest.segment_index;
+
         pure_pursuit_internal::path_point goal_point = {};
         const bool has_goal_point = pure_pursuit_internal::get_point(g_snapshot.part_number, static_cast<std::uint16_t>(g_snapshot.point_count - 1u), goal_point);
 
@@ -300,20 +407,23 @@ namespace pure_pursuit
             return;
         }
 
-        const double x_mm = static_cast<double>(local_position.x_um) / 1000.0;
-        const double y_mm = static_cast<double>(local_position.y_um) / 1000.0;
         const double goal_dx = static_cast<double>(goal_point.x_mm) - x_mm;
         const double goal_dy = static_cast<double>(goal_point.y_mm) - y_mm;
         const double goal_distance_mm = std::sqrt((goal_dx * goal_dx) + (goal_dy * goal_dy));
+        double remaining_path_distance_mm = 0.0;
+        const bool has_remaining_path_distance = calculate_remaining_path_distance_mm(closest, remaining_path_distance_mm);
 
-        if (goal_distance_mm <= pure_pursuit_tuning::k_mission_goal_tolerance_mm)
+        if (has_remaining_path_distance == false)
+        {
+            finish_path(false);
+            return;
+        }
+
+        if ((goal_distance_mm <= pure_pursuit_tuning::k_mission_goal_tolerance_mm) && (remaining_path_distance_mm <= pure_pursuit_tuning::k_mission_goal_tolerance_mm))
         {
             finish_path(true);
             return;
         }
-
-        const closest_path_state closest = find_closest_path_state(x_mm, y_mm, g_snapshot.closest_point_index);
-        g_snapshot.closest_point_index = closest.segment_index;
 
         const double heading_rad = static_cast<double>(local_position.heading_urad) / 1000000.0;
         const pure_pursuit_internal::driveable_target_state target = find_driveable_target_from_progress(closest, x_mm, y_mm, heading_rad);
@@ -323,8 +433,12 @@ namespace pure_pursuit
         const double heading_error_deg = pure_pursuit_internal::normalize_angle_deg((std::atan2(dy, dx) * 180.0 / pure_pursuit_tuning::k_pi) - heading_deg);
         const double abs_heading_error_deg = std::fabs(heading_error_deg);
 
+        g_snapshot.robot_x_mm = x_mm;
+        g_snapshot.robot_y_mm = y_mm;
+        g_snapshot.robot_heading_deg = heading_deg;
+        g_snapshot.robot_pose_id = local_position.pose_id;
+        g_snapshot.robot_branch_id = local_position.branch_id;
         write_target_snapshot(target, heading_error_deg);
-
         std::int32_t linear_velocity_mm_s = 0;
         std::int32_t yaw_rate_mdeg_s = 0;
 
@@ -334,12 +448,13 @@ namespace pure_pursuit
         }
         else
         {
-            linear_velocity_mm_s = pure_pursuit_tuning::k_mission_linear_speed_mm_s;
+            linear_velocity_mm_s = pure_pursuit_internal::get_mission_linear_speed_mm_s();
             pure_pursuit_internal::apply_heading_speed_slowdown(linear_velocity_mm_s, abs_heading_error_deg);
 
             if (target.distance_sq_mm > 1.0)
             {
                 yaw_rate_mdeg_s = pure_pursuit_internal::compute_tracking_yaw_rate_mdeg_s(target.curvature, linear_velocity_mm_s);
+                pure_pursuit_internal::apply_heading_p_yaw_correction(yaw_rate_mdeg_s, heading_error_deg);
                 pure_pursuit_internal::apply_yaw_rate_speed_limit(linear_velocity_mm_s, yaw_rate_mdeg_s);
             }
 
@@ -372,6 +487,7 @@ namespace pure_pursuit
         g_snapshot = {};
         g_snapshot.active = true;
         g_snapshot.has_path = true;
+        g_snapshot.stop_reason = stop_reason_none;
         g_snapshot.part_number = part_number;
         g_snapshot.point_count = point_count;
         g_snapshot.closest_point_index = 0u;
@@ -381,12 +497,23 @@ namespace pure_pursuit
 
     void stop()
     {
+        const std::uint8_t previous_stop_reason = g_snapshot.stop_reason;
+
         if (g_snapshot.active == true)
         {
             pure_pursuit_internal::send_stop_motion(g_snapshot);
         }
 
         g_snapshot = {};
+
+        if (previous_stop_reason != stop_reason_none)
+        {
+            g_snapshot.stop_reason = previous_stop_reason;
+        }
+        else
+        {
+            g_snapshot.stop_reason = stop_reason_external_stop;
+        }
     }
 
     snapshot read_snapshot()

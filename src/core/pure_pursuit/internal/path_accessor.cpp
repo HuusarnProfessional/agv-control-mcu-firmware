@@ -5,7 +5,7 @@
 
 namespace
 {
-    std::int16_t read_i16_le(const std::uint8_t *data, std::size_t offset)
+    std::int16_t read_point_int16_little_endian(const std::uint8_t *data, std::size_t offset)
     {
         const std::uint16_t low = static_cast<std::uint16_t>(data[offset]);
         const std::uint16_t high = static_cast<std::uint16_t>(data[offset + 1u]) << 8u;
@@ -93,8 +93,8 @@ namespace pure_pursuit_internal
                     return false;
                 }
 
-                point_out.x_mm = read_i16_le(chunk_view.data, point_offset);
-                point_out.y_mm = read_i16_le(chunk_view.data, point_offset + 2u);
+                point_out.x_mm = read_point_int16_little_endian(chunk_view.data, point_offset);
+                point_out.y_mm = read_point_int16_little_endian(chunk_view.data, point_offset + 2u);
                 return true;
             }
 

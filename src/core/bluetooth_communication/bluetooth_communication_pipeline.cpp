@@ -71,7 +71,6 @@ namespace bluetooth_communication_pipeline
                 if (parser_status == middleware_types::parser_status::route_ready)
                 {
                     g_has_selected_route = middleware_parser::take_selected_route(g_selected_route);
-
                     break;
                 }
 
@@ -88,7 +87,7 @@ namespace bluetooth_communication_pipeline
         {
             if ((g_selected_route.matched_route != nullptr) && (g_selected_route.matched_route->handler != nullptr))
             {
-                g_selected_route.matched_route->handler();
+                (void)g_selected_route.matched_route->handler();
             }
 
             middleware_parser::reset();

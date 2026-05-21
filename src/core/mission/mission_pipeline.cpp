@@ -3,6 +3,7 @@
 #include "mission_buffer.hpp"
 #include "mission_runner.hpp"
 #include "mission_transfer.hpp"
+#include "../control/primitives/motion_primitive/motion_primitive_status_monitor.hpp"
 #include "../control/primitives/pause/pause_pipeline.hpp"
 #include "../bluetooth_communication/middleware/middleware_handler_input_bridge.hpp"
 #include "../pure_pursuit/pure_pursuit.hpp"
@@ -20,6 +21,7 @@ namespace
     part_stage g_part_stage = part_stage::idle;
     std::uint16_t g_stage_part_number = 0U;
     mission_buffer::mission_part_view g_part_view = {};
+    bool g_waiting_for_motion_primitive = false;
 
     bool run_command(const mission_buffer::mission_command_view &command_view)
     {
@@ -40,12 +42,13 @@ namespace
         g_part_stage = part_stage::idle;
         g_stage_part_number = 0U;
         g_part_view = {};
+        g_waiting_for_motion_primitive = false;
         pure_pursuit::stop();
     }
 
-    void abort_mission_and_reset()
+    void abort_mission_and_reset(mission_runner::abort_reason reason)
     {
-        mission_runner::abort_mission();
+        mission_runner::abort_mission(reason);
         reset_part_execution_state();
     }
 
@@ -53,6 +56,14 @@ namespace
     {
         if (pause_pipeline::is_active() == true)
         {
+            g_waiting_for_motion_primitive = false;
+            g_part_stage = part_stage::waiting_before_part_complete;
+            return true;
+        }
+
+        if (motion_primitive_status_monitor::is_waiting() == true)
+        {
+            g_waiting_for_motion_primitive = true;
             g_part_stage = part_stage::waiting_before_part_complete;
             return true;
         }
@@ -92,11 +103,28 @@ namespace
             return;
         }
 
+        if (g_waiting_for_motion_primitive == true)
+        {
+            if (motion_primitive_status_monitor::is_waiting() == true)
+            {
+                return;
+            }
+
+            if ((motion_primitive_status_monitor::is_complete() == true) &&
+                (motion_primitive_status_monitor::was_successful() == false))
+            {
+                abort_mission_and_reset(mission_runner::abort_reason::motion_primitive_failed);
+                return;
+            }
+
+            g_waiting_for_motion_primitive = false;
+        }
+
         const bool continued_ok = start_path_or_run_end_command(current_part);
 
         if (continued_ok == false)
         {
-            abort_mission_and_reset();
+            abort_mission_and_reset(mission_runner::abort_reason::end_command_failed);
         }
     }
 
@@ -116,7 +144,7 @@ namespace
 
         if (path_snapshot.success == false)
         {
-            abort_mission_and_reset();
+            abort_mission_and_reset(mission_runner::abort_reason::path_failed);
             return;
         }
 
@@ -124,7 +152,7 @@ namespace
 
         if (end_command_ok == false)
         {
-            abort_mission_and_reset();
+            abort_mission_and_reset(mission_runner::abort_reason::end_command_failed);
             return;
         }
 
@@ -132,7 +160,7 @@ namespace
 
         if (complete_ok == false)
         {
-            abort_mission_and_reset();
+            abort_mission_and_reset(mission_runner::abort_reason::part_complete_failed);
             return;
         }
 
@@ -151,11 +179,28 @@ namespace
             return;
         }
 
+        if (g_waiting_for_motion_primitive == true)
+        {
+            if (motion_primitive_status_monitor::is_waiting() == true)
+            {
+                return;
+            }
+
+            if ((motion_primitive_status_monitor::is_complete() == true) &&
+                (motion_primitive_status_monitor::was_successful() == false))
+            {
+                abort_mission_and_reset(mission_runner::abort_reason::motion_primitive_failed);
+                return;
+            }
+
+            g_waiting_for_motion_primitive = false;
+        }
+
         const bool complete_ok = mission_runner::complete_current_part();
 
         if (complete_ok == false)
         {
-            abort_mission_and_reset();
+            abort_mission_and_reset(mission_runner::abort_reason::part_complete_failed);
             return;
         }
 
@@ -168,7 +213,7 @@ namespace
 
         if (has_part_info == false)
         {
-            abort_mission_and_reset();
+            abort_mission_and_reset(mission_runner::abort_reason::part_info_missing);
             return;
         }
 
@@ -177,12 +222,20 @@ namespace
 
         if (start_command_ok == false)
         {
-            abort_mission_and_reset();
+            abort_mission_and_reset(mission_runner::abort_reason::start_command_failed);
             return;
         }
 
         if (pause_pipeline::is_active() == true)
         {
+            g_waiting_for_motion_primitive = false;
+            g_part_stage = part_stage::waiting_before_path_start;
+            return;
+        }
+
+        if (motion_primitive_status_monitor::is_waiting() == true)
+        {
+            g_waiting_for_motion_primitive = true;
             g_part_stage = part_stage::waiting_before_path_start;
             return;
         }
@@ -191,7 +244,7 @@ namespace
 
         if (continued_ok == false)
         {
-            abort_mission_and_reset();
+            abort_mission_and_reset(mission_runner::abort_reason::end_command_failed);
             return;
         }
 
@@ -220,7 +273,12 @@ namespace mission_pipeline
 
     void tick(std::uint32_t now_ms)
     {
-        (void)now_ms;
+        mission_runner::tick(now_ms);
+
+        if (mission_runner::started_this_tick() == true)
+        {
+            return;
+        }
 
         std::uint16_t current_part = 0u;
         const bool has_current_part = mission_runner::get_current_part(current_part);

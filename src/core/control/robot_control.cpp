@@ -5,6 +5,7 @@
 #include "../global_positioning/global_positioning_pipeline.hpp"
 #include "../position_sensorfusion/position_sensorfusion_pipeline.hpp"
 #include "./primitives/command_speed/command_speed_state.hpp"
+#include "./primitives/motion_primitive/motion_primitive_status_monitor.hpp"
 #include "./primitives/pause/pause_pipeline.hpp"
 #include "../mission/mission_pipeline.hpp"
 #include "../pure_pursuit/pure_pursuit_pipeline.hpp"
@@ -19,6 +20,7 @@ namespace robot_control
         global_positioning_pipeline::init();
         position_sensorfusion_pipeline::init();
         command_speed_state::init();
+        motion_primitive_status_monitor::init();
         pause_pipeline::init();
         mission_pipeline::init();
         pure_pursuit_pipeline::init();
@@ -32,6 +34,7 @@ namespace robot_control
         global_positioning_pipeline::tick(now_ms);
         position_sensorfusion_pipeline::tick(now_ms);
         pause_pipeline::tick(now_ms);
+        motion_primitive_status_monitor::tick(now_ms);
         mission_pipeline::tick(now_ms);
         pure_pursuit_pipeline::tick(now_ms);
         bluetooth_communication_pipeline::tick(now_ms);

@@ -9,8 +9,8 @@ namespace mission_buffer
 {
     constexpr std::size_t max_mission_id_length = 64u;
     constexpr std::size_t max_command_length = 64u;
-    constexpr std::uint16_t max_part_count = 16u;
-    constexpr std::uint16_t max_chunk_count = 64u;
+    constexpr std::uint16_t max_part_count = 64u;
+    constexpr std::uint16_t max_chunk_count = 128u;
     constexpr std::size_t max_chunk_data_length = 990u;
     constexpr std::size_t max_path_data_bytes = 8192u;
 

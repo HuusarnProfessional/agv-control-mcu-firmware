@@ -4,6 +4,7 @@
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <cstdlib>
 
@@ -58,6 +59,24 @@ namespace handler_helpers
         return write_response_bytes(
             reinterpret_cast<const std::uint8_t *>(line_ending),
             sizeof(line_ending) - 1u);
+    }
+
+    inline bool write_mission_ready_response(const char *mission_id)
+    {
+        if (mission_id == nullptr)
+        {
+            return false;
+        }
+
+        char response[160] = {};
+        const int formatted_length = std::snprintf(response, sizeof(response), "rsp:mission_ready(%s)", mission_id);
+
+        if ((formatted_length <= 0) || (static_cast<std::size_t>(formatted_length) >= sizeof(response)))
+        {
+            return false;
+        }
+
+        return write_response_text(response);
     }
 
     inline bool parse_int16(const char *text, std::int16_t &value_out)

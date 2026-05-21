@@ -1,8 +1,11 @@
 #include "../incoming_request_handler_declarations.hpp"
 
+#include <Arduino.h>
+
 #include "../../../middleware_parse_helpers.hpp"
 #include "../../handler_helpers.hpp"
 #include "../../../../../control/primitives/command_speed/command_speed_state.hpp"
+#include "../../../../../control/primitives/motion_primitive/motion_primitive_status_monitor.hpp"
 #include "../../../../../motion_mcu_communication/outgoing_payloads/service/drive_forward_payload.hpp"
 
 namespace
@@ -54,6 +57,7 @@ namespace incoming_request_handlers
             return false;
         }
 
+        motion_primitive_status_monitor::notify_drive_forward_sent(millis());
         const bool ok_response_written = handler_helpers::write_response("rsp:ok()");
 
         if (ok_response_written == false)

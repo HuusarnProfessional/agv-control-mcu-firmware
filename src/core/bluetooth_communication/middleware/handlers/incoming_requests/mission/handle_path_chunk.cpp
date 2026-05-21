@@ -1,5 +1,7 @@
 #include "../incoming_request_handler_declarations.hpp"
 
+#include <cstddef>
+
 #include "../../../middleware_parse_helpers.hpp"
 #include "../../../../../mission/mission_buffer.hpp"
 #include "../../../../../mission/mission_transfer.hpp"
@@ -114,6 +116,20 @@ namespace incoming_request_handlers
         const bool ok_response_written = handler_helpers::write_response("rsp:ok()");
 
         if (ok_response_written == false)
+        {
+            return false;
+        }
+
+        const bool transfer_complete = mission_transfer::is_transfer_complete();
+
+        if (transfer_complete == false)
+        {
+            return true;
+        }
+
+        const bool ready_response_written = handler_helpers::write_mission_ready_response(mission_id);
+
+        if (ready_response_written == false)
         {
             return false;
         }
