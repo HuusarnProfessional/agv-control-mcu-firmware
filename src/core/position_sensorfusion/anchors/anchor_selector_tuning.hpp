@@ -19,4 +19,8 @@ namespace anchor_selector_tuning
     constexpr std::int64_t safe_max_y_um = 3200000;
     constexpr std::int64_t maximum_anchor_position_jump_um = 350000;
     constexpr std::int32_t maximum_heading_delta_urad = 523599;
+    constexpr std::int32_t position_forward_curve_start_urad = 174533;
+    constexpr std::int32_t position_forward_curve_full_urad = 523599;
+    constexpr std::uint16_t position_forward_min_gain_permille = 0U;
+    constexpr std::uint16_t position_lateral_min_gain_permille = 350U;
 }

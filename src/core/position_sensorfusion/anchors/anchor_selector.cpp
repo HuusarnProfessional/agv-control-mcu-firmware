@@ -5,6 +5,8 @@
 #include "../internal/confidence_math.hpp"
 #include "../internal/geometry_helpers.hpp"
 
+#include <cmath>
+
 namespace
 {
     struct pending_reference_state
@@ -85,6 +87,98 @@ namespace
         decision.position_jump_x_um = projection.jump_x_um;
         decision.position_jump_y_um = projection.jump_y_um;
         decision.position_projection_rotation_urad = projection.rotation_urad;
+    }
+
+    std::uint16_t calculate_curve_gain_permille(std::int32_t heading_delta_urad, std::uint16_t minimum_gain_permille)
+    {
+        if (heading_delta_urad <= anchor_selector_tuning::position_forward_curve_start_urad)
+        {
+            return 1000U;
+        }
+
+        if (heading_delta_urad >= anchor_selector_tuning::position_forward_curve_full_urad)
+        {
+            return minimum_gain_permille;
+        }
+
+        const std::int32_t span_urad = anchor_selector_tuning::position_forward_curve_full_urad - anchor_selector_tuning::position_forward_curve_start_urad;
+        const std::int32_t progress_urad = heading_delta_urad - anchor_selector_tuning::position_forward_curve_start_urad;
+        const std::int32_t gain_span = 1000 - static_cast<std::int32_t>(minimum_gain_permille);
+        const std::int32_t reduced_gain = (progress_urad * gain_span) / span_urad;
+        const std::int32_t gain_permille = 1000 - reduced_gain;
+
+        if (gain_permille <= static_cast<std::int32_t>(minimum_gain_permille))
+        {
+            return minimum_gain_permille;
+        }
+
+        return static_cast<std::uint16_t>(gain_permille);
+    }
+
+    position_sensorfusion_anchors::candidate adjust_position_candidate_for_curve_progress(const motion_mcu_incoming_state::local_position_state &local_position,
+                                                                                          const position_sensorfusion_anchors::current_reference &current_reference,
+                                                                                          const position_sensorfusion_anchors::candidate &position_candidate)
+    {
+        position_sensorfusion_anchors::candidate adjusted_candidate = position_candidate;
+
+        if (position_candidate.valid == false)
+        {
+            return adjusted_candidate;
+        }
+
+        if (position_candidate.type != position_sensorfusion_anchors::anchor_type::position_only)
+        {
+            return adjusted_candidate;
+        }
+
+        if (position_candidate.reference.has_local_reference == false)
+        {
+            return adjusted_candidate;
+        }
+
+        if (current_reference.has_heading == false)
+        {
+            return adjusted_candidate;
+        }
+
+        const anchor_guards::projected_candidate_snapshot projection = anchor_guards::build_projected_candidate_snapshot(local_position, current_reference, position_candidate);
+
+        if (projection.valid == false)
+        {
+            return adjusted_candidate;
+        }
+
+        const std::int32_t heading_delta_urad = position_sensorfusion_internal::absolute_angle_delta_urad(local_position.heading_urad, position_candidate.reference.local_heading_urad);
+        const std::uint16_t forward_gain_permille = calculate_curve_gain_permille(heading_delta_urad, anchor_selector_tuning::position_forward_min_gain_permille);
+        const std::uint16_t lateral_gain_permille = calculate_curve_gain_permille(heading_delta_urad, anchor_selector_tuning::position_lateral_min_gain_permille);
+
+        if ((forward_gain_permille >= 1000U) && (lateral_gain_permille >= 1000U))
+        {
+            return adjusted_candidate;
+        }
+
+        std::int64_t forward_axis_x = 0;
+        std::int64_t forward_axis_y = 0;
+        position_sensorfusion_internal::rotate_xy_um(1000000, 0, current_reference.heading_urad, forward_axis_x, forward_axis_y);
+        const double axis_x = static_cast<double>(forward_axis_x) / 1000000.0;
+        const double axis_y = static_cast<double>(forward_axis_y) / 1000000.0;
+        const double jump_x = static_cast<double>(projection.jump_x_um);
+        const double jump_y = static_cast<double>(projection.jump_y_um);
+        const double forward_component_um = (jump_x * axis_x) + (jump_y * axis_y);
+        const double forward_delta_x_um = forward_component_um * axis_x;
+        const double forward_delta_y_um = forward_component_um * axis_y;
+        const double lateral_delta_x_um = jump_x - forward_delta_x_um;
+        const double lateral_delta_y_um = jump_y - forward_delta_y_um;
+        const double forward_gain = static_cast<double>(forward_gain_permille) / 1000.0;
+        const double lateral_gain = static_cast<double>(lateral_gain_permille) / 1000.0;
+        const double adjusted_jump_x_um = (lateral_delta_x_um * lateral_gain) + (forward_delta_x_um * forward_gain);
+        const double adjusted_jump_y_um = (lateral_delta_y_um * lateral_gain) + (forward_delta_y_um * forward_gain);
+        const double projection_adjust_x_um = adjusted_jump_x_um - jump_x;
+        const double projection_adjust_y_um = adjusted_jump_y_um - jump_y;
+
+        adjusted_candidate.reference.x_um += static_cast<std::int64_t>(std::llround(projection_adjust_x_um));
+        adjusted_candidate.reference.y_um += static_cast<std::int64_t>(std::llround(projection_adjust_y_um));
+        return adjusted_candidate;
     }
 
     bool candidate_has_required_shape(const position_sensorfusion_anchors::candidate &candidate, anchor_selector::reject_reason &reason_out)
@@ -424,8 +518,9 @@ namespace anchor_selector
         update_settling(now_ms);
         update_pending_timeout(now_ms);
 
+        const position_sensorfusion_anchors::candidate adjusted_position_candidate = adjust_position_candidate_for_curve_progress(local_position, current_reference, position_candidate);
         output_snapshot output = build_output();
-        fill_decision_candidates(output.decision, heading_candidate, position_candidate);
+        fill_decision_candidates(output.decision, heading_candidate, adjusted_position_candidate);
         output.decision.local_confidence = local_position.confidence_position;
 
         if (local_position.has_pose == false)
@@ -435,7 +530,7 @@ namespace anchor_selector
         }
 
         update_startup_reference(local_position, now_ms);
-        fill_position_projection(output.decision, local_position, current_reference, position_candidate);
+        fill_position_projection(output.decision, local_position, current_reference, adjusted_position_candidate);
 
         if (pending_branch_has_arrived(local_position) == true)
         {
@@ -472,7 +567,7 @@ namespace anchor_selector
         }
 
         const std::uint16_t local_reference_confidence = local_position.confidence_position;
-        const position_sensorfusion_anchors::candidate *candidate = select_candidate(local_position, current_reference, heading_candidate, position_candidate, local_reference_confidence, anchor_selector_tuning::reference_switch_margin_percent, output.decision);
+        const position_sensorfusion_anchors::candidate *candidate = select_candidate(local_position, current_reference, heading_candidate, adjusted_position_candidate, local_reference_confidence, anchor_selector_tuning::reference_switch_margin_percent, output.decision);
 
         if (candidate == nullptr)
         {

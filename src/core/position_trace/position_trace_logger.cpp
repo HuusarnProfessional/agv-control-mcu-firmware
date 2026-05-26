@@ -1,5 +1,6 @@
 #include "position_trace_logger.hpp"
 
+#include <cmath>
 #include <cstdarg>
 #include <cstdio>
 
@@ -43,6 +44,7 @@ namespace
         std::uint16_t filtered_raw_confidence = 0U;
         std::uint16_t filtered_history_confidence = 0U;
         std::uint32_t filtered_sample_id = 0U;
+        std::int32_t filtered_motion_heading_urad = 0;
         std::int32_t raw_x_mm = 0;
         std::int32_t raw_y_mm = 0;
         std::uint8_t raw_quality = 0U;
@@ -50,6 +52,10 @@ namespace
         std::int32_t sensorfusion_x_mm = 0;
         std::int32_t sensorfusion_y_mm = 0;
         std::int32_t sensorfusion_heading_urad = 0;
+        std::int32_t filtered_minus_sensorfusion_x_mm = 0;
+        std::int32_t filtered_minus_sensorfusion_y_mm = 0;
+        std::int32_t filtered_minus_sensorfusion_forward_mm = 0;
+        std::int32_t filtered_minus_sensorfusion_lateral_mm = 0;
         std::int32_t transform_rotation_urad = 0;
         std::uint16_t sensorfusion_confidence_position = 0U;
         std::uint16_t sensorfusion_confidence_heading = 0U;
@@ -97,6 +103,13 @@ namespace
         std::int32_t current_heading_urad = 0;
     };
 
+    struct filtered_motion_state
+    {
+        bool valid = false;
+        std::int64_t x_um = 0;
+        std::int64_t y_um = 0;
+    };
+
     trace_sample trace_buffer[trace_capacity] = {};
     std::uint16_t oldest_index = 0U;
     std::uint16_t trace_count = 0U;
@@ -105,6 +118,7 @@ namespace
     std::uint32_t last_trace_time_ms = 0U;
     bool trace_enabled = true;
     stitched_local_state stitched_local = {};
+    filtered_motion_state filtered_motion = {};
 
     std::int32_t um_to_mm(std::int64_t value_um)
     {
@@ -224,6 +238,17 @@ namespace
         stitched_local.current_heading_urad = position_sensorfusion_internal::normalize_angle_urad(stitched_local.branch_origin_heading_urad + local_position.heading_urad);
     }
 
+    std::int32_t calculate_heading_from_delta(std::int64_t delta_x_um, std::int64_t delta_y_um)
+    {
+        if ((delta_x_um == 0) && (delta_y_um == 0))
+        {
+            return 0;
+        }
+
+        const double heading_rad = std::atan2(static_cast<double>(delta_y_um), static_cast<double>(delta_x_um));
+        return static_cast<std::int32_t>(std::llround(heading_rad * 1000000.0));
+    }
+
     trace_sample build_sample(std::uint32_t now_ms,
                               const motion_mcu_incoming_state::local_position_state &local_position,
                               const filtered_global::output_snapshot &filtered_position,
@@ -262,6 +287,16 @@ namespace
             sample.filtered_raw_confidence = filtered_position.raw_confidence_position;
             sample.filtered_history_confidence = filtered_position.history_confidence;
             sample.filtered_sample_id = filtered_position.sample_id;
+
+            if (filtered_motion.valid == true)
+            {
+                sample.filtered_motion_heading_urad = calculate_heading_from_delta(filtered_position.x_um - filtered_motion.x_um,
+                                                                                  filtered_position.y_um - filtered_motion.y_um);
+            }
+
+            filtered_motion.valid = true;
+            filtered_motion.x_um = filtered_position.x_um;
+            filtered_motion.y_um = filtered_position.y_um;
         }
 
         if (filtered_position.is_new_sample == true)
@@ -300,6 +335,26 @@ namespace
             sample.sensorfusion_confidence_heading = sensorfusion_position.confidence_heading;
             sample.sensorfusion_pose_id = sensorfusion_position.pose_id;
             sample.sensorfusion_branch_id = sensorfusion_position.branch_id;
+
+            if (filtered_position.has_position == true)
+            {
+                const std::int64_t error_x_um = filtered_position.x_um - sensorfusion_position.x_um;
+                const std::int64_t error_y_um = filtered_position.y_um - sensorfusion_position.y_um;
+                sample.filtered_minus_sensorfusion_x_mm = um_to_mm(error_x_um);
+                sample.filtered_minus_sensorfusion_y_mm = um_to_mm(error_y_um);
+
+                std::int64_t forward_axis_x = 0;
+                std::int64_t forward_axis_y = 0;
+                position_sensorfusion_internal::rotate_xy_um(1000000, 0, sensorfusion_position.heading_urad, forward_axis_x, forward_axis_y);
+                const double axis_x = static_cast<double>(forward_axis_x) / 1000000.0;
+                const double axis_y = static_cast<double>(forward_axis_y) / 1000000.0;
+                const double error_x = static_cast<double>(error_x_um);
+                const double error_y = static_cast<double>(error_y_um);
+                const double forward_um = (error_x * axis_x) + (error_y * axis_y);
+                const double lateral_um = (-error_x * axis_y) + (error_y * axis_x);
+                sample.filtered_minus_sensorfusion_forward_mm = static_cast<std::int32_t>(std::llround(forward_um / 1000.0));
+                sample.filtered_minus_sensorfusion_lateral_mm = static_cast<std::int32_t>(std::llround(lateral_um / 1000.0));
+            }
         }
 
         if (anchor_event.valid == true)
@@ -349,7 +404,7 @@ namespace
             buffer,
             capacity,
             offset,
-            "%lu,%u,%ld,%ld,%ld,%ld,%ld,%ld,%u,%u,%u,%u,%ld,%ld,%u,%u,%u,%lu,%ld,%ld,%u,%lu,%ld,%ld,%ld,%ld,%u,%u,%u,%u,%u,%u,%u,%u,%u,%ld,%ld,%ld,%ld,%u,%u,%u,%u,%u,%u,%u,%u,%u,%lu,%lu,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld",
+            "%lu,%u,%ld,%ld,%ld,%ld,%ld,%ld,%u,%u,%u,%u,%ld,%ld,%u,%u,%u,%lu,%ld,%ld,%u,%lu,%ld,%ld,%u,%lu,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%u,%u,%u,%u,%u,%u,%u,%u,%u,%ld,%ld,%ld,%ld,%u,%u,%u,%u,%u,%u,%u,%u,%u,%lu,%lu,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld",
             static_cast<unsigned long>(sample.time_ms),
             static_cast<unsigned>(sample.flags),
             static_cast<long>(sample.local_x_mm),
@@ -368,6 +423,7 @@ namespace
             static_cast<unsigned>(sample.filtered_raw_confidence),
             static_cast<unsigned>(sample.filtered_history_confidence),
             static_cast<unsigned long>(sample.filtered_sample_id),
+            static_cast<long>(sample.filtered_motion_heading_urad),
             static_cast<long>(sample.raw_x_mm),
             static_cast<long>(sample.raw_y_mm),
             static_cast<unsigned>(sample.raw_quality),
@@ -375,6 +431,10 @@ namespace
             static_cast<long>(sample.sensorfusion_x_mm),
             static_cast<long>(sample.sensorfusion_y_mm),
             static_cast<long>(sample.sensorfusion_heading_urad),
+            static_cast<long>(sample.filtered_minus_sensorfusion_x_mm),
+            static_cast<long>(sample.filtered_minus_sensorfusion_y_mm),
+            static_cast<long>(sample.filtered_minus_sensorfusion_forward_mm),
+            static_cast<long>(sample.filtered_minus_sensorfusion_lateral_mm),
             static_cast<long>(sample.transform_rotation_urad),
             static_cast<unsigned>(sample.sensorfusion_confidence_position),
             static_cast<unsigned>(sample.sensorfusion_confidence_heading),
@@ -427,6 +487,7 @@ namespace position_trace_logger
         trace_dropped_count = 0U;
         last_trace_time_ms = 0U;
         stitched_local = {};
+        filtered_motion = {};
     }
 
     void set_enabled(bool enabled)
