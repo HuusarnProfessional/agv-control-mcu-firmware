@@ -4,6 +4,7 @@
 
 #include "../../../middleware_parse_helpers.hpp"
 #include "../../../route/middleware_route_table.hpp"
+#include "../../../../../mission/mission_debug_overrides.hpp"
 #include "../../../../../mission/mission_transfer.hpp"
 #include "../../handler_helpers.hpp"
 
@@ -87,6 +88,32 @@ namespace
         command_out.route = route;
         return true;
     }
+
+    bool maybe_replace_rotate_end_command_with_dummy(mission_buffer::mission_command_view &command_view)
+    {
+        if (mission_debug_overrides::is_replace_rotate_end_command_with_dummy_enabled() == false)
+        {
+            return true;
+        }
+
+        const middleware_route_types::middleware_command_route *rotate_route =
+            middleware_route_table::find_incoming_request_route("set_drive_rotate_deg");
+        const middleware_route_types::middleware_command_route *dummy_route =
+            middleware_route_table::find_incoming_request_route("dummy");
+
+        if ((rotate_route == nullptr) || (dummy_route == nullptr))
+        {
+            return false;
+        }
+
+        if (command_view.route != rotate_route)
+        {
+            return true;
+        }
+
+        command_view.route = dummy_route;
+        return copy_text(command_view.argument_stream, sizeof(command_view.argument_stream), ")");
+    }
 }
 
 namespace incoming_request_handlers
@@ -157,6 +184,11 @@ namespace incoming_request_handlers
         }
 
         if (parse_stored_command(end_command, end_command_view) == false)
+        {
+            return false;
+        }
+
+        if (maybe_replace_rotate_end_command_with_dummy(end_command_view) == false)
         {
             return false;
         }

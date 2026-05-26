@@ -13,6 +13,75 @@ namespace
 {
     position_sensorfusion_anchors::candidate latest_candidate = {};
 
+    std::uint32_t calculate_line_residual_um(std::int64_t start_x_um,
+                                             std::int64_t start_y_um,
+                                             std::int64_t end_x_um,
+                                             std::int64_t end_y_um,
+                                             std::int64_t point_x_um,
+                                             std::int64_t point_y_um)
+    {
+        const double line_dx = static_cast<double>(end_x_um - start_x_um);
+        const double line_dy = static_cast<double>(end_y_um - start_y_um);
+        const double line_length = std::sqrt((line_dx * line_dx) + (line_dy * line_dy));
+
+        if (line_length <= 1.0)
+        {
+            return 0U;
+        }
+
+        const double point_dx = static_cast<double>(point_x_um - start_x_um);
+        const double point_dy = static_cast<double>(point_y_um - start_y_um);
+        const double cross = std::abs((point_dx * line_dy) - (point_dy * line_dx));
+        const double residual = cross / line_length;
+
+        return static_cast<std::uint32_t>(std::llround(residual));
+    }
+
+    bool local_trajectory_is_straight(const filtered_global::sample *samples, std::uint8_t sample_count)
+    {
+        if (sample_count < 2U)
+        {
+            return false;
+        }
+
+        const filtered_global::sample &newest_sample = samples[0U];
+        const filtered_global::sample &oldest_sample = samples[sample_count - 1U];
+        const std::int64_t local_delta_x_um = newest_sample.local_x_um - oldest_sample.local_x_um;
+        const std::int64_t local_delta_y_um = newest_sample.local_y_um - oldest_sample.local_y_um;
+        const std::int64_t local_distance_um = position_sensorfusion_internal::calculate_distance_um(local_delta_x_um, local_delta_y_um);
+
+        if (local_distance_um < heading_anchor_tuning::minimum_trajectory_distance_um)
+        {
+            return false;
+        }
+
+        const std::uint32_t local_heading_span_urad =
+            position_sensorfusion_internal::absolute_angle_delta_urad(newest_sample.local_heading_urad, oldest_sample.local_heading_urad);
+
+        if (local_heading_span_urad > heading_anchor_tuning::maximum_local_heading_span_urad)
+        {
+            return false;
+        }
+
+        for (std::uint8_t index = 1U; index + 1U < sample_count; index++)
+        {
+            const std::uint32_t local_residual_um =
+                calculate_line_residual_um(oldest_sample.local_x_um,
+                                           oldest_sample.local_y_um,
+                                           newest_sample.local_x_um,
+                                           newest_sample.local_y_um,
+                                           samples[index].local_x_um,
+                                           samples[index].local_y_um);
+
+            if (local_residual_um > heading_anchor_tuning::maximum_local_line_residual_um)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     std::uint8_t collect_samples(filtered_global::sample *samples_out)
     {
         filtered_global::sample newest_sample = {};
@@ -141,7 +210,7 @@ namespace
 
         candidate.valid = true;
         candidate.type = position_sensorfusion_anchors::anchor_type::heading_transform;
-        candidate.confidence = position_sensorfusion_internal::smaller_confidence(position_confidence, heading_confidence);
+        candidate.confidence = heading_confidence;
         candidate.reference.valid = true;
         candidate.reference.has_heading = true;
         candidate.reference.x_um = reference_sample.x_um;
@@ -176,6 +245,12 @@ namespace heading_anchor
         const std::uint8_t sample_count = collect_samples(samples);
 
         if (sample_count < heading_anchor_tuning::minimum_sample_count)
+        {
+            latest_candidate = {};
+            return latest_candidate;
+        }
+
+        if (local_trajectory_is_straight(samples, sample_count) == false)
         {
             latest_candidate = {};
             return latest_candidate;

@@ -3,11 +3,14 @@
 namespace debug_handlers
 {
     bool handle_set_debug_stream();
+    bool handle_set_mission_end_rotate_dummy();
     bool handle_set_position_sensorfusion_local_only();
     bool handle_set_position_sensorfusion_heading_anchor();
     bool handle_set_position_sensorfusion_position_anchor();
     bool handle_set_position_sensorfusion_position_anchor_direct_filtered_sample();
     bool handle_set_position_sensorfusion_position_anchor_jump_guard();
+    bool handle_set_position_sensorfusion_stop_relocalize_test();
+    bool handle_get_position_sensorfusion_stop_relocalize_status();
     bool handle_clear_position_trace();
     bool handle_set_position_trace_enabled();
     bool handle_set_position_trace_period_ms();

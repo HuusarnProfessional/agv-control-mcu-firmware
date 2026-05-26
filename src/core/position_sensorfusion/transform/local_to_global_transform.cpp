@@ -113,8 +113,14 @@ namespace
         }
         else
         {
-            active_transform.global_reference_heading_urad = activation.reference.heading_urad;
-            active_transform.rotation_urad = position_sensorfusion_internal::normalize_angle_urad(activation.reference.heading_urad - active_transform.local_reference_heading_urad);
+            // Heading anchors carry an absolute global heading estimate into the new branch.
+            // The activation-time local heading belongs to the new branch frame, so the
+            // old branch-local reference heading must not be reused here.
+            const std::int32_t anchored_global_heading_urad = activation.reference.heading_urad;
+            active_transform.rotation_urad =
+                position_sensorfusion_internal::normalize_angle_urad(
+                    anchored_global_heading_urad - local_position.heading_urad);
+            active_transform.global_reference_heading_urad = anchored_global_heading_urad;
             active_transform.confidence_heading = activation.reference.confidence_heading;
         }
 

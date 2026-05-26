@@ -107,6 +107,13 @@ namespace pure_pursuit_pipeline
         pure_pursuit::init();
     }
 
+    void notify_pose_reset()
+    {
+        latest_valid_position = {};
+        latest_valid_position_time_ms = 0U;
+        has_latest_valid_position = false;
+    }
+
     void tick(std::uint32_t now_ms)
     {
         const position_sensorfusion::output_snapshot current_position = position_sensorfusion::read_output();

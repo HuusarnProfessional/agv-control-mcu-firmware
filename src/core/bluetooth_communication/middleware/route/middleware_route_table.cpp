@@ -62,11 +62,14 @@ namespace
     const middleware_route_types::middleware_command_route g_debug_routes[] =
     {
         {"set_debug_stream(const char:stream_name,bool:enabled)", debug_handlers::handle_set_debug_stream},
+        {"set_mission_end_rotate_dummy(bool:enabled)", debug_handlers::handle_set_mission_end_rotate_dummy},
         {"set_position_sensorfusion_local_only(bool:enabled)", debug_handlers::handle_set_position_sensorfusion_local_only},
         {"set_position_sensorfusion_heading_anchor(bool:enabled)", debug_handlers::handle_set_position_sensorfusion_heading_anchor},
         {"set_position_sensorfusion_position_anchor(bool:enabled)", debug_handlers::handle_set_position_sensorfusion_position_anchor},
         {"set_position_sensorfusion_position_anchor_direct_filtered_sample(bool:enabled)", debug_handlers::handle_set_position_sensorfusion_position_anchor_direct_filtered_sample},
         {"set_position_sensorfusion_position_anchor_jump_guard(bool:enabled)", debug_handlers::handle_set_position_sensorfusion_position_anchor_jump_guard},
+        {"set_position_sensorfusion_stop_relocalize_test(bool:enabled)", debug_handlers::handle_set_position_sensorfusion_stop_relocalize_test},
+        {"get_position_sensorfusion_stop_relocalize_status()", debug_handlers::handle_get_position_sensorfusion_stop_relocalize_status},
         {"clear_position_trace()", debug_handlers::handle_clear_position_trace},
         {"set_position_trace_enabled(bool:enabled)", debug_handlers::handle_set_position_trace_enabled},
         {"set_position_trace_period_ms(uint16_t:period_ms)", debug_handlers::handle_set_position_trace_period_ms},

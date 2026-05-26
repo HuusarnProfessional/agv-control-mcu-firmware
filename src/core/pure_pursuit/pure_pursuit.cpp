@@ -26,6 +26,7 @@ namespace
     };
 
     pure_pursuit::snapshot g_snapshot = {};
+    bool g_external_hold_enabled = false;
 
     void finish_path(bool success)
     {
@@ -387,6 +388,14 @@ namespace pure_pursuit
             return;
         }
 
+        if (g_external_hold_enabled == true)
+        {
+            g_snapshot.linear_velocity_mm_s = 0;
+            g_snapshot.yaw_rate_mdeg_s = 0;
+            pure_pursuit_internal::send_stop_motion(g_snapshot);
+            return;
+        }
+
         if (g_snapshot.point_count == 0u)
         {
             finish_path(true);
@@ -470,6 +479,7 @@ namespace pure_pursuit
     void init()
     {
         g_snapshot = {};
+        g_external_hold_enabled = false;
     }
 
     bool start_part(std::uint16_t part_number)
@@ -495,6 +505,16 @@ namespace pure_pursuit
         return g_snapshot.point_count > 0u;
     }
 
+    void set_external_hold(bool enabled)
+    {
+        g_external_hold_enabled = enabled;
+    }
+
+    bool is_external_hold_enabled()
+    {
+        return g_external_hold_enabled;
+    }
+
     void stop()
     {
         const std::uint8_t previous_stop_reason = g_snapshot.stop_reason;
@@ -505,6 +525,7 @@ namespace pure_pursuit
         }
 
         g_snapshot = {};
+        g_external_hold_enabled = false;
 
         if (previous_stop_reason != stop_reason_none)
         {

@@ -32,6 +32,7 @@ namespace
     std::uint8_t g_payload_length = 0U;
     std::uint8_t g_payload_index = 0U;
     std::uint8_t g_payload_buffer[motion_mcu_routes::max_payload_length] = {};
+    constexpr std::size_t max_motion_mcu_bytes_per_tick = 512U;
 
     const incoming_payload_definition::route g_routes[] =
     {
@@ -142,19 +143,24 @@ namespace incoming_motion_mcu_pipeline
     void tick(std::uint32_t now_ms)
     {
         motion_mcu_heartbeat::tick(now_ms);
+        std::size_t total_bytes_processed = 0U;
 
-        while (true)
+        while (total_bytes_processed < max_motion_mcu_bytes_per_tick)
         {
             std::uint8_t read_buffer[64u] = {};
+            const std::size_t remaining_budget = max_motion_mcu_bytes_per_tick - total_bytes_processed;
+            const std::size_t read_capacity = remaining_budget < sizeof(read_buffer) ? remaining_budget : sizeof(read_buffer);
             const std::size_t read_count = esp_uart_api::read_bytes(
                 esp_uart_api::uart_channel::motion_mcu,
                 read_buffer,
-                sizeof(read_buffer));
+                read_capacity);
 
             if (read_count == 0u)
             {
                 return;
             }
+
+            total_bytes_processed += read_count;
 
             for (std::size_t index = 0u; index < read_count; index++)
             {

@@ -4,9 +4,15 @@
 
 namespace anchor_selector_tuning
 {
+    // Test-only override to force heading anchors through selector guards.
+    constexpr bool enable_heading_anchor_test_mode = true;
     constexpr std::uint16_t minimum_anchor_confidence = 300U;
+    // Heading corrections should not be allowed from very weak short-window fits.
+    constexpr std::uint16_t minimum_heading_anchor_confidence = 300U;
     constexpr std::uint16_t reference_switch_margin_percent = 0U;
+    constexpr std::uint16_t heading_reference_switch_margin_percent = 0U;
     constexpr std::uint16_t pending_switch_margin_percent = 25U;
+    constexpr std::int32_t minimum_heading_request_delta_urad = 50000;
     constexpr std::uint32_t startup_anchor_delay_ms = 3000U;
     constexpr std::int64_t startup_minimum_travel_um = 400000;
     constexpr std::uint32_t minimum_request_interval_ms = 1000U;
@@ -17,7 +23,7 @@ namespace anchor_selector_tuning
     constexpr std::int64_t safe_max_x_um = 5000000;
     constexpr std::int64_t safe_min_y_um = 400000;
     constexpr std::int64_t safe_max_y_um = 3200000;
-    constexpr std::int64_t maximum_anchor_position_jump_um = 350000;
+    constexpr std::int64_t maximum_anchor_position_jump_um = 1000000;
     constexpr std::int32_t maximum_heading_delta_urad = 523599;
     constexpr std::int32_t position_forward_curve_start_urad = 174533;
     constexpr std::int32_t position_forward_curve_full_urad = 523599;

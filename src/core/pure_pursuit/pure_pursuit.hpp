@@ -41,6 +41,10 @@ namespace pure_pursuit
 
     bool start_part(std::uint16_t part_number);
 
+    void set_external_hold(bool enabled);
+
+    bool is_external_hold_enabled();
+
     void stop();
 
     void tick(std::uint32_t now_ms, const position_sensorfusion::output_snapshot &local_position, const motion_mcu_heartbeat::snapshot &heartbeat);

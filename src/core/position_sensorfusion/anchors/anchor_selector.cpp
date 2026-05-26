@@ -15,7 +15,9 @@ namespace
         std::uint32_t request_time_ms = 0U;
         position_sensorfusion_anchors::candidate candidate = {};
         bool has_saved_global_heading = false;
+        bool has_saved_global_rotation = false;
         std::int32_t saved_global_heading_urad = 0;
+        std::int32_t saved_global_rotation_urad = 0;
     };
 
     pending_reference_state pending_reference = {};
@@ -30,6 +32,12 @@ namespace
     std::uint32_t last_request_sample_id = 0U;
     std::uint16_t last_request_confidence = 0U;
     bool position_jump_guard_enabled = true;
+
+    bool heading_anchor_test_mode_is_enabled(const position_sensorfusion_anchors::candidate &candidate)
+    {
+        return anchor_selector_tuning::enable_heading_anchor_test_mode &&
+               (candidate.type == position_sensorfusion_anchors::anchor_type::heading_transform);
+    }
 
     std::uint16_t calculate_margin_confidence(std::uint16_t confidence, std::uint16_t margin_percent)
     {
@@ -65,7 +73,7 @@ namespace
     void fill_decision_candidates(anchor_selector::decision_snapshot &decision, const position_sensorfusion_anchors::candidate &heading_candidate, const position_sensorfusion_anchors::candidate &position_candidate)
     {
         decision.valid = true;
-        decision.heading_confidence = heading_candidate.confidence;
+        decision.heading_confidence = heading_candidate.reference.confidence_heading;
         decision.position_confidence = position_candidate.confidence;
         decision.heading_pose_id = heading_candidate.reference.pose_id;
         decision.position_pose_id = position_candidate.reference.pose_id;
@@ -207,7 +215,14 @@ namespace
             return false;
         }
 
-        if (candidate.confidence < anchor_selector_tuning::minimum_anchor_confidence)
+        std::uint16_t minimum_confidence = anchor_selector_tuning::minimum_anchor_confidence;
+
+        if (candidate.type == position_sensorfusion_anchors::anchor_type::heading_transform)
+        {
+            minimum_confidence = anchor_selector_tuning::minimum_heading_anchor_confidence;
+        }
+
+        if (candidate.confidence < minimum_confidence)
         {
             reason_out = anchor_selector::reject_reason::confidence_low;
             return false;
@@ -245,13 +260,18 @@ namespace
             return false;
         }
 
-        if (anchor_guards::heading_is_consistent(current_reference, candidate) == false)
+        const bool heading_anchor_test_mode = heading_anchor_test_mode_is_enabled(candidate);
+
+        if ((heading_anchor_test_mode == false) &&
+            (anchor_guards::heading_is_consistent(current_reference, candidate) == false))
         {
             reason_out = anchor_selector::reject_reason::heading_inconsistent;
             return false;
         }
 
-        if ((position_jump_guard_enabled == true) && (anchor_guards::candidate_position_jump_is_safe(local_position, current_reference, candidate) == false))
+        if ((position_jump_guard_enabled == true) &&
+            (heading_anchor_test_mode == false) &&
+            (anchor_guards::candidate_position_jump_is_safe(local_position, current_reference, candidate) == false))
         {
             reason_out = anchor_selector::reject_reason::jump_too_large;
             return false;
@@ -261,16 +281,39 @@ namespace
         return true;
     }
 
-    const position_sensorfusion_anchors::candidate *select_candidate(const motion_mcu_incoming_state::local_position_state &local_position, const position_sensorfusion_anchors::current_reference &current_reference, const position_sensorfusion_anchors::candidate &heading_candidate, const position_sensorfusion_anchors::candidate &position_candidate, std::uint16_t reference_confidence, std::uint16_t margin_percent, anchor_selector::decision_snapshot &decision)
+    const position_sensorfusion_anchors::candidate *select_candidate(const motion_mcu_incoming_state::local_position_state &local_position,
+                                                                     const position_sensorfusion_anchors::current_reference &current_reference,
+                                                                     const position_sensorfusion_anchors::candidate &heading_candidate,
+                                                                     const position_sensorfusion_anchors::candidate &position_candidate,
+                                                                     std::uint16_t local_heading_confidence,
+                                                                     std::uint16_t local_position_confidence,
+                                                                     anchor_selector::decision_snapshot &decision)
     {
         decision.reason = anchor_selector::reject_reason::none;
-        decision.required_confidence = calculate_margin_confidence(reference_confidence, margin_percent);
+        decision.local_confidence = local_heading_confidence;
+        decision.required_confidence = calculate_margin_confidence(local_heading_confidence, anchor_selector_tuning::heading_reference_switch_margin_percent);
 
         anchor_selector::reject_reason reason = anchor_selector::reject_reason::none;
 
         if (candidate_is_allowed(local_position, current_reference, heading_candidate, reason) == true)
         {
-            if (confidence_beats_margin(heading_candidate.confidence, reference_confidence, margin_percent) == true)
+            decision.local_confidence = anchor_selector_tuning::minimum_heading_anchor_confidence;
+            decision.required_confidence = anchor_selector_tuning::minimum_heading_anchor_confidence;
+
+            if (current_reference.has_heading == true)
+            {
+                const std::int32_t heading_delta_urad =
+                    position_sensorfusion_internal::absolute_angle_delta_urad(
+                        heading_candidate.reference.heading_urad,
+                        current_reference.heading_urad);
+
+                if (heading_delta_urad >= anchor_selector_tuning::minimum_heading_request_delta_urad)
+                {
+                    decision.selected_type = heading_candidate.type;
+                    return &heading_candidate;
+                }
+            }
+            else
             {
                 decision.selected_type = heading_candidate.type;
                 return &heading_candidate;
@@ -288,9 +331,12 @@ namespace
             return nullptr;
         }
 
+        decision.local_confidence = local_position_confidence;
+        decision.required_confidence = calculate_margin_confidence(local_position_confidence, anchor_selector_tuning::reference_switch_margin_percent);
+
         if (candidate_is_allowed(local_position, current_reference, position_candidate, reason) == true)
         {
-            if (confidence_beats_margin(position_candidate.confidence, reference_confidence, margin_percent) == true)
+            if (confidence_beats_margin(position_candidate.confidence, local_position_confidence, anchor_selector_tuning::reference_switch_margin_percent) == true)
             {
                 decision.selected_type = position_candidate.type;
                 return &position_candidate;
@@ -418,11 +464,13 @@ namespace
         activation.valid = true;
         activation.type = pending_reference.candidate.type;
         activation.has_saved_global_heading = pending_reference.has_saved_global_heading;
+        activation.has_saved_global_rotation = pending_reference.has_saved_global_rotation;
         activation.source_pose_id = pending_reference.candidate.reference.pose_id;
         activation.source_branch_id = pending_reference.candidate.reference.branch_id;
         activation.activation_time_ms = now_ms;
         activation.confidence = pending_reference.candidate.confidence;
         activation.saved_global_heading_urad = pending_reference.saved_global_heading_urad;
+        activation.saved_global_rotation_urad = pending_reference.saved_global_rotation_urad;
         activation.reference = pending_reference.candidate.reference;
         pending_reference = {};
         settling = true;
@@ -455,6 +503,21 @@ namespace
         pending_reference.candidate = candidate;
         pending_reference.has_saved_global_heading = current_reference.has_heading;
         pending_reference.saved_global_heading_urad = current_reference.heading_urad;
+        pending_reference.has_saved_global_rotation = false;
+        pending_reference.saved_global_rotation_urad = 0;
+
+        if (candidate.type == position_sensorfusion_anchors::anchor_type::heading_transform)
+        {
+            pending_reference.has_saved_global_rotation = candidate.reference.has_local_reference;
+
+            if (pending_reference.has_saved_global_rotation == true)
+            {
+                pending_reference.saved_global_rotation_urad =
+                    position_sensorfusion_internal::normalize_angle_urad(
+                        candidate.reference.heading_urad - candidate.reference.local_heading_urad);
+            }
+        }
+
         has_last_request = true;
         last_request_time_ms = now_ms;
         last_request_sample_id = candidate.reference.sample_id;
@@ -521,7 +584,6 @@ namespace anchor_selector
         const position_sensorfusion_anchors::candidate adjusted_position_candidate = adjust_position_candidate_for_curve_progress(local_position, current_reference, position_candidate);
         output_snapshot output = build_output();
         fill_decision_candidates(output.decision, heading_candidate, adjusted_position_candidate);
-        output.decision.local_confidence = local_position.confidence_position;
 
         if (local_position.has_pose == false)
         {
@@ -566,8 +628,14 @@ namespace anchor_selector
             return output;
         }
 
-        const std::uint16_t local_reference_confidence = local_position.confidence_position;
-        const position_sensorfusion_anchors::candidate *candidate = select_candidate(local_position, current_reference, heading_candidate, adjusted_position_candidate, local_reference_confidence, anchor_selector_tuning::reference_switch_margin_percent, output.decision);
+        const position_sensorfusion_anchors::candidate *candidate =
+            select_candidate(local_position,
+                             current_reference,
+                             heading_candidate,
+                             adjusted_position_candidate,
+                             local_position.confidence_heading,
+                             local_position.confidence_position,
+                             output.decision);
 
         if (candidate == nullptr)
         {
