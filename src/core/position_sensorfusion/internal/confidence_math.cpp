@@ -1,5 +1,7 @@
 #include "confidence_math.hpp"
 
+#include <cmath>
+
 namespace position_sensorfusion_internal
 {
     std::uint16_t smaller_confidence(std::uint16_t left, std::uint16_t right)
@@ -26,6 +28,33 @@ namespace position_sensorfusion_internal
     {
         const std::uint32_t multiplied = static_cast<std::uint32_t>(left) * static_cast<std::uint32_t>(right);
         return static_cast<std::uint16_t>(multiplied / full_confidence);
+    }
+
+    std::uint16_t geometric_mean_confidence(std::uint16_t first, std::uint16_t second, std::uint16_t third)
+    {
+        if ((first == 0U) || (second == 0U) || (third == 0U))
+        {
+            return 0U;
+        }
+
+        const double normalized_first = static_cast<double>(first) / static_cast<double>(full_confidence);
+        const double normalized_second = static_cast<double>(second) / static_cast<double>(full_confidence);
+        const double normalized_third = static_cast<double>(third) / static_cast<double>(full_confidence);
+        const double normalized_product = normalized_first * normalized_second * normalized_third;
+        const double normalized_mean = std::cbrt(normalized_product);
+        const double scaled_mean = normalized_mean * static_cast<double>(full_confidence);
+
+        if (scaled_mean <= 0.0)
+        {
+            return 0U;
+        }
+
+        if (scaled_mean >= static_cast<double>(full_confidence))
+        {
+            return full_confidence;
+        }
+
+        return static_cast<std::uint16_t>(std::llround(scaled_mean));
     }
 
     std::uint16_t apply_confidence_gain(std::uint16_t confidence, std::uint16_t gain_permille)

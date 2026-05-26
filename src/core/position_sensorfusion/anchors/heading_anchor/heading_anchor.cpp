@@ -22,6 +22,11 @@ namespace
             return 0U;
         }
 
+        if (newest_sample.has_local_reference == false)
+        {
+            return 0U;
+        }
+
         std::uint8_t sample_count = 0U;
 
         for (std::uint8_t index = 0U; index < filtered_global::history_count(); index++)
@@ -34,6 +39,11 @@ namespace
             }
 
             if (sample.has_local_reference == false)
+            {
+                continue;
+            }
+
+            if (sample.branch_id != newest_sample.branch_id)
             {
                 continue;
             }

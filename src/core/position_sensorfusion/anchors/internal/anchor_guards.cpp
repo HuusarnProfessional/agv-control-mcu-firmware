@@ -35,7 +35,12 @@ namespace
         return static_cast<std::uint16_t>(current_pose_id - reference_pose_id);
     }
 
-    bool project_candidate_to_current_pose(const motion_mcu_incoming_state::local_position_state &local_position, const position_sensorfusion_anchors::current_reference &current_reference, const position_sensorfusion_anchors::candidate &candidate, std::int64_t &x_um_out, std::int64_t &y_um_out)
+    bool project_candidate_to_current_pose(const motion_mcu_incoming_state::local_position_state &local_position,
+                                           const position_sensorfusion_anchors::current_reference &current_reference,
+                                           const position_sensorfusion_anchors::candidate &candidate,
+                                           std::int64_t &x_um_out,
+                                           std::int64_t &y_um_out,
+                                           std::int32_t &rotation_urad_out)
     {
         if (candidate.reference.has_local_reference == false)
         {
@@ -53,6 +58,8 @@ namespace
 
             rotation_urad = position_sensorfusion_internal::normalize_angle_urad(candidate.reference.heading_urad - candidate.reference.local_heading_urad);
         }
+
+        rotation_urad_out = rotation_urad;
 
         const std::int64_t local_delta_x_um = local_position.x_um - candidate.reference.local_x_um;
         const std::int64_t local_delta_y_um = local_position.y_um - candidate.reference.local_y_um;
@@ -112,27 +119,14 @@ namespace anchor_guards
 
     bool candidate_position_jump_is_safe(const motion_mcu_incoming_state::local_position_state &local_position, const position_sensorfusion_anchors::current_reference &current_reference, const position_sensorfusion_anchors::candidate &candidate)
     {
-        if (current_reference.valid == false)
+        const projected_candidate_snapshot projection = build_projected_candidate_snapshot(local_position, current_reference, candidate);
+
+        if (projection.valid == false)
         {
-            return true;
+            return current_reference.valid == false;
         }
 
-        if (local_position.has_pose == false)
-        {
-            return false;
-        }
-
-        std::int64_t projected_x_um = 0;
-        std::int64_t projected_y_um = 0;
-
-        if (project_candidate_to_current_pose(local_position, current_reference, candidate, projected_x_um, projected_y_um) == false)
-        {
-            return false;
-        }
-
-        const std::int64_t jump_x_um = projected_x_um - current_reference.x_um;
-        const std::int64_t jump_y_um = projected_y_um - current_reference.y_um;
-        const std::int64_t jump_distance_um = position_sensorfusion_internal::calculate_distance_um(jump_x_um, jump_y_um);
+        const std::int64_t jump_distance_um = position_sensorfusion_internal::calculate_distance_um(projection.jump_x_um, projection.jump_y_um);
 
         if (jump_distance_um > anchor_selector_tuning::maximum_anchor_position_jump_um)
         {
@@ -167,5 +161,50 @@ namespace anchor_guards
         }
 
         return true;
+    }
+
+    projected_candidate_snapshot build_projected_candidate_snapshot(const motion_mcu_incoming_state::local_position_state &local_position,
+                                                                    const position_sensorfusion_anchors::current_reference &current_reference,
+                                                                    const position_sensorfusion_anchors::candidate &candidate)
+    {
+        projected_candidate_snapshot snapshot = {};
+
+        if (current_reference.valid == false)
+        {
+            return snapshot;
+        }
+
+        if (local_position.has_pose == false)
+        {
+            return snapshot;
+        }
+
+        if (candidate.reference.has_local_reference == false)
+        {
+            return snapshot;
+        }
+
+        if (candidate.reference.valid == false)
+        {
+            return snapshot;
+        }
+
+        if (candidate.valid == false)
+        {
+            return snapshot;
+        }
+
+        std::int32_t rotation_urad = 0;
+
+        if (project_candidate_to_current_pose(local_position, current_reference, candidate, snapshot.projected_x_um, snapshot.projected_y_um, rotation_urad) == false)
+        {
+            return snapshot;
+        }
+
+        snapshot.valid = true;
+        snapshot.rotation_urad = rotation_urad;
+        snapshot.jump_x_um = snapshot.projected_x_um - current_reference.x_um;
+        snapshot.jump_y_um = snapshot.projected_y_um - current_reference.y_um;
+        return snapshot;
     }
 }

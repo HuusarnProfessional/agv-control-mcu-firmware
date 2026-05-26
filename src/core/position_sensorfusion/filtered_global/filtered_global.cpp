@@ -14,8 +14,9 @@ namespace
     filtered_global::sample bootstrap_samples[filtered_global_tuning::bootstrap_max_sample_count] = {};
     std::uint8_t bootstrap_sample_count = 0U;
     filtered_global::output_snapshot latest_output = {};
+    std::uint8_t stuck_rejected_sample_count = 0U;
 
-    void reset_bootstrap()
+    void reset_bootstrap_samples()
     {
         for (std::uint8_t index = 0U; index < filtered_global_tuning::bootstrap_max_sample_count; index++)
         {
@@ -23,6 +24,14 @@ namespace
         }
 
         bootstrap_sample_count = 0U;
+    }
+
+    void reset_runtime_state()
+    {
+        filtered_global_history::reset(history);
+        reset_bootstrap_samples();
+        latest_output = {};
+        stuck_rejected_sample_count = 0U;
     }
 
     void push_bootstrap_sample(const filtered_global::sample &sample)
@@ -123,7 +132,8 @@ namespace
 
         initial_sample.raw_confidence_position = raw_sample.raw_confidence_position;
         filtered_global_history::push(history, initial_sample);
-        reset_bootstrap();
+        reset_bootstrap_samples();
+        stuck_rejected_sample_count = 0U;
 
         return rebuild_output(now_ms, true, true, false, raw_sample, history_confidence);
     }
@@ -135,8 +145,21 @@ namespace
 
         if (filtered_confidence < filtered_global_tuning::minimum_accepted_confidence)
         {
+            if (latest_output.confidence_position == 0U)
+            {
+                stuck_rejected_sample_count++;
+
+                if (stuck_rejected_sample_count >= filtered_global_tuning::stuck_recovery_rejected_sample_count)
+                {
+                    reset_runtime_state();
+                    return update_bootstrap(raw_sample, now_ms);
+                }
+            }
+
             return rebuild_output(now_ms, true, false, true, raw_sample, history_confidence);
         }
+
+        stuck_rejected_sample_count = 0U;
 
         filtered_global::sample previous_sample = {};
 
@@ -156,9 +179,7 @@ namespace filtered_global
 {
     void init()
     {
-        filtered_global_history::reset(history);
-        reset_bootstrap();
-        latest_output = {};
+        reset_runtime_state();
     }
 
     output_snapshot update(const sample &raw_sample, std::uint32_t now_ms)

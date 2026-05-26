@@ -164,9 +164,10 @@ namespace history_filter
         const std::uint16_t physical_confidence = calculate_physical_confidence(history, raw_sample);
         const std::uint16_t prediction_confidence = calculate_prediction_confidence(history, raw_sample);
         const std::uint16_t speed_confidence = calculate_speed_confidence(history, raw_sample);
-        std::uint16_t confidence = position_sensorfusion_internal::smaller_confidence(physical_confidence, prediction_confidence);
-        confidence = position_sensorfusion_internal::smaller_confidence(confidence, speed_confidence);
 
-        return confidence;
+        return position_sensorfusion_internal::geometric_mean_confidence(
+            physical_confidence,
+            prediction_confidence,
+            speed_confidence);
     }
 }

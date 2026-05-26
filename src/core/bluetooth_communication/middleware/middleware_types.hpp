@@ -19,7 +19,8 @@ namespace middleware_types
         invalid = 0,
         incoming_request,
         initiated_request,
-        response
+        response,
+        debug
     };
 
     enum class parser_status : std::uint8_t

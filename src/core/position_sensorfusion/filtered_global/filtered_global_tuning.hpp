@@ -25,6 +25,7 @@ namespace filtered_global_tuning
     constexpr std::uint16_t low_pass_memory_confidence_cap = 400U;
     constexpr std::uint32_t position_confidence_full_age_ms = 250U;
     constexpr std::uint32_t position_confidence_zero_age_ms = 2500U;
+    constexpr std::uint8_t stuck_recovery_rejected_sample_count = 4U;
 
     constexpr std::uint8_t local_history_size = 128U;
     constexpr std::uint32_t local_history_max_match_error_ms = 150U;

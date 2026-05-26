@@ -12,6 +12,8 @@ namespace position_sensorfusion_internal
 
     std::uint16_t multiply_confidence(std::uint16_t left, std::uint16_t right);
 
+    std::uint16_t geometric_mean_confidence(std::uint16_t first, std::uint16_t second, std::uint16_t third);
+
     std::uint16_t apply_confidence_gain(std::uint16_t confidence, std::uint16_t gain_permille);
 
     std::uint16_t range_to_confidence(std::int64_t value, std::int64_t full_value, std::int64_t zero_value);

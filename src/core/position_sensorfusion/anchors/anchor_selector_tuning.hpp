@@ -5,8 +5,10 @@
 namespace anchor_selector_tuning
 {
     constexpr std::uint16_t minimum_anchor_confidence = 300U;
-    constexpr std::uint16_t reference_switch_margin_percent = 10U;
+    constexpr std::uint16_t reference_switch_margin_percent = 0U;
     constexpr std::uint16_t pending_switch_margin_percent = 25U;
+    constexpr std::uint32_t startup_anchor_delay_ms = 3000U;
+    constexpr std::int64_t startup_minimum_travel_um = 400000;
     constexpr std::uint32_t minimum_request_interval_ms = 1000U;
     constexpr std::uint32_t pending_request_timeout_ms = 3000U;
     constexpr std::uint32_t settling_time_ms = 500U;

@@ -92,8 +92,23 @@ namespace
 
         if (position_only_anchor == true)
         {
-            active_transform.rotation_urad = previous_rotation_urad;
-            active_transform.global_reference_heading_urad = position_sensorfusion_internal::normalize_angle_urad(active_transform.local_reference_heading_urad + active_transform.rotation_urad);
+            std::int32_t preserved_global_heading_urad = 0;
+
+            if (activation.has_saved_global_heading == true)
+            {
+                preserved_global_heading_urad = activation.saved_global_heading_urad;
+            }
+            else
+            {
+                preserved_global_heading_urad =
+                    position_sensorfusion_internal::normalize_angle_urad(
+                        activation.reference.local_heading_urad + previous_rotation_urad);
+            }
+
+            active_transform.rotation_urad =
+                position_sensorfusion_internal::normalize_angle_urad(
+                    preserved_global_heading_urad - local_position.heading_urad);
+            active_transform.global_reference_heading_urad = preserved_global_heading_urad;
             active_transform.confidence_heading = previous_heading_confidence;
         }
         else

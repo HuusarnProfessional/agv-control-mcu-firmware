@@ -11,6 +11,7 @@ namespace incoming_request_handlers
     bool handle_set_position_local_reset();
     bool handle_set_armed();
     bool handle_set_obstacle_safety();
+    bool handle_set_obstacle_margin_mm();
     bool handle_get_armed();
     bool handle_set_drive_forward_mm();
     bool handle_set_mission_new();

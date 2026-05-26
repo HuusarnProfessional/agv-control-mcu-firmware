@@ -1,0 +1,41 @@
+#pragma once
+
+namespace debug_handlers
+{
+    bool handle_set_debug_stream();
+    bool handle_set_position_sensorfusion_local_only();
+    bool handle_set_position_sensorfusion_heading_anchor();
+    bool handle_set_position_sensorfusion_position_anchor();
+    bool handle_set_position_sensorfusion_position_anchor_direct_filtered_sample();
+    bool handle_set_position_sensorfusion_position_anchor_jump_guard();
+    bool handle_clear_position_trace();
+    bool handle_set_position_trace_enabled();
+    bool handle_set_position_trace_period_ms();
+    bool handle_run_entry_seeded_drive_forward_test();
+    bool handle_get_position_trace_status();
+    bool handle_get_position_trace_packet();
+    bool handle_get_status();
+    bool handle_get_stop();
+    bool handle_get_encoder_raw();
+    bool handle_get_encoder_deg();
+    bool handle_get_encoder_time();
+    bool handle_get_encoder_time_ms();
+    bool handle_get_encoder_status();
+    bool handle_get_obstacle_distance();
+    bool handle_get_imu_gyro();
+    bool handle_get_imu_accel();
+    bool handle_get_imu_mag();
+    bool handle_get_imu_raw_gyro();
+    bool handle_get_imu_raw_accel();
+    bool handle_get_imu_raw_mag();
+    bool handle_get_imu_calibrated_gyro();
+    bool handle_get_imu_calibrated_accel();
+    bool handle_get_imu_debug();
+    bool handle_get_imu_status();
+    bool handle_get_imu_time_ms();
+    bool handle_get_imu_has_calibration();
+    bool handle_get_motion_debug();
+    bool handle_get_motion_primitive_status();
+    bool handle_get_local_position_model_debug();
+    bool handle_get_voltage_debug();
+}

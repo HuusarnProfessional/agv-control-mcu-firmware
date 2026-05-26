@@ -1,5 +1,11 @@
 #include "incoming_motion_mcu_pipeline.hpp"
 
+#include "debug/encoder_debug_payload.hpp"
+#include "debug/imu_debug_payload.hpp"
+#include "debug/local_position_model_debug_payload.hpp"
+#include "debug/motion_debug_payload.hpp"
+#include "debug/obstacle_debug_payload.hpp"
+#include "debug/voltage_debug_payload.hpp"
 #include "incoming_payload_definition.hpp"
 #include "runtime/local_position_payload.hpp"
 #include "runtime/motion_primitive_status_payload.hpp"
@@ -8,6 +14,7 @@
 #include "../../../platform/esp_uart_api.hpp"
 #include "../heartbeat/motion_mcu_heartbeat.hpp"
 #include "../motion_mcu_routes.hpp"
+#include "../state/debug/debug_state.hpp"
 #include "../state/incoming/incoming_state.hpp"
 
 namespace
@@ -31,7 +38,13 @@ namespace
         { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::local_position), local_position_payload::handle },
         { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::safety_status), safety_status_payload::handle },
         { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::power_status), power_status_payload::handle },
-        { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::motion_primitive_status), motion_primitive_status_payload::handle }
+        { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::motion_primitive_status), motion_primitive_status_payload::handle },
+        { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::encoder_debug), encoder_debug_payload::handle },
+        { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::imu_debug), imu_debug_payload::handle },
+        { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::obstacle_debug), obstacle_debug_payload::handle },
+        { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::voltage_debug), voltage_debug_payload::handle },
+        { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::motion_debug), motion_debug_payload::handle },
+        { static_cast<std::uint8_t>(motion_mcu_routes::incoming_payload_id::local_position_model_debug), local_position_model_debug_payload::handle }
     };
 
     void reset_parser()
@@ -122,6 +135,7 @@ namespace incoming_motion_mcu_pipeline
     {
         reset_parser();
         motion_mcu_incoming_state::init();
+        motion_mcu_debug_state::init();
         motion_mcu_heartbeat::init();
     }
 
@@ -129,15 +143,23 @@ namespace incoming_motion_mcu_pipeline
     {
         motion_mcu_heartbeat::tick(now_ms);
 
-        std::uint8_t read_buffer[32u] = {};
-        std::size_t read_count = esp_uart_api::read_bytes(
-            esp_uart_api::uart_channel::motion_mcu,
-            read_buffer,
-            sizeof(read_buffer));
-
-        for (std::size_t index = 0u; index < read_count; index++)
+        while (true)
         {
-            process_byte(read_buffer[index], now_ms);
+            std::uint8_t read_buffer[64u] = {};
+            const std::size_t read_count = esp_uart_api::read_bytes(
+                esp_uart_api::uart_channel::motion_mcu,
+                read_buffer,
+                sizeof(read_buffer));
+
+            if (read_count == 0u)
+            {
+                return;
+            }
+
+            for (std::size_t index = 0u; index < read_count; index++)
+            {
+                process_byte(read_buffer[index], now_ms);
+            }
         }
     }
 }

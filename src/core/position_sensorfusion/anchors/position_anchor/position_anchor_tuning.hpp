@@ -14,4 +14,9 @@ namespace position_anchor_tuning
     constexpr std::uint32_t zero_residual_um = 300000U;
     constexpr std::uint8_t iteration_count = 5U;
     constexpr std::uint16_t confidence_gain_permille = 2500U;
+    constexpr std::uint32_t minimum_trajectory_distance_um = 100000U;
+    constexpr std::uint32_t maximum_local_heading_span_urad = 500000U;
+    constexpr std::uint32_t maximum_local_line_residual_um = 120000U;
+    constexpr std::uint8_t long_heading_gate_sample_count = 10U;
+    constexpr std::uint32_t long_heading_gate_maximum_span_urad = 175000U;
 }

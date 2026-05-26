@@ -69,7 +69,7 @@ namespace adaptive_low_pass
         filtered_sample.x_um = previous_sample.x_um + step_x_um;
         filtered_sample.y_um = previous_sample.y_um + step_y_um;
         filtered_sample.z_um = previous_sample.z_um + calculate_weighted_step_um(raw_sample.z_um - previous_sample.z_um, memory_confidence, filtered_confidence);
-        filtered_sample.confidence_position = position_sensorfusion_internal::larger_confidence(previous_sample.confidence_position, filtered_confidence);
+        filtered_sample.confidence_position = filtered_confidence;
 
         return filtered_sample;
     }

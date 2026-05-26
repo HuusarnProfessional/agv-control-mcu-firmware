@@ -67,10 +67,12 @@ namespace position_sensorfusion_anchors
         anchor_type type = anchor_type::none;
         bool is_initial_reference = false;
         bool is_mission_seed = false;
+        bool has_saved_global_heading = false;
         std::uint16_t source_pose_id = 0U;
         std::uint8_t source_branch_id = 0U;
         std::uint32_t activation_time_ms = 0U;
         std::uint16_t confidence = 0U;
+        std::int32_t saved_global_heading_urad = 0;
         global_reference reference = {};
     };
 }
